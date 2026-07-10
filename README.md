@@ -41,6 +41,56 @@ AMETHYST_NO_OPEN=1 npm start            # do not auto-open a browser
 PORT=8080 npm start                     # choose a fixed local port
 ```
 
+## Standalone Desktop App (Electron)
+
+Amethyst can be packaged as a standalone desktop application with a proper installer wizard. The installer lets you:
+
+- **Choose install location** (e.g., `C:\Program Files\Amethyst`, `D:\Games\Amethyst`, etc.)
+- **Create a desktop shortcut** automatically
+- **Pin to your taskbar** with one click
+- **Add to Start Menu** under Games category
+- **Launch immediately** after install
+
+### Running in Electron (development)
+
+```bash
+npm run electron:dev
+```
+
+### Building the installer
+
+```bash
+# Build for current platform
+npm run dist
+
+# Build for Windows specifically
+npm run dist:win
+
+# Build NSIS installer only
+npm run dist:nsis
+```
+
+The installer output will be in the `dist/` directory. The NSIS installer provides:
+- Custom install directory selection
+- Desktop shortcut creation
+- Start Menu shortcut
+- Taskbar pinning option
+- Uninstaller
+
+### Installer features
+
+The NSIS installer wizard includes:
+1. **Welcome page** - Introduction to Amethyst
+2. **License agreement** - MIT license
+3. **Install location** - Choose any drive/folder (default: `%LOCALAPPDATA%\Programs\Amethyst`)
+4. **Start Menu folder** - Choose where to create shortcuts
+5. **Installation progress** - File extraction progress
+6. **Finish page** - Option to launch Amethyst immediately
+
+After installation, you can also use the in-app "Desktop & Taskbar" section to:
+- Create or recreate the desktop shortcut
+- Pin/unpin from taskbar at any time
+
 ## File structure
 
 ```text

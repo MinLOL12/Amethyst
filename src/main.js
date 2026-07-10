@@ -13,20 +13,32 @@ function openBrowser(url) {
   child.unref();
 }
 
-async function main() {
+async function startBackend() {
   await initializeStore();
   const server = createServer();
   const port = Number(process.env.PORT) || 0;
-  server.listen(port, '127.0.0.1', () => {
-    const address = server.address();
-    const url = `http://127.0.0.1:${address.port}/`;
-    console.log(`${APP_NAME} ${APP_VERSION} is running at ${url}`);
-    console.log('Close this terminal to stop the launcher backend.');
-    openBrowser(url);
+  return new Promise((resolve) => {
+    server.listen(port, '127.0.0.1', () => {
+      const address = server.address();
+      const url = `http://127.0.0.1:${address.port}/`;
+      console.log(`${APP_NAME} ${APP_VERSION} is running at ${url}`);
+      console.log('Close this terminal to stop the launcher backend.');
+      resolve({ server, url });
+    });
   });
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+async function main() {
+  const { url } = await startBackend();
+  openBrowser(url);
+}
+
+// Only run main() when this file is executed directly (not when imported by Electron)
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { startBackend };
