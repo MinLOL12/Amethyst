@@ -7,7 +7,7 @@ const { downloadFile, fetchJson, mapLimit, progressBus } = require('./downloader
 const { ensureDir, writeJson } = require('./store');
 const { isAllowedByRules } = require('./rules');
 const { minecraftOsName, classpathSeparator } = require('./os');
-const { pickJava, recommendedJavaMajor } = require('./javaLocator');
+const { pickJava, recommendedJavaMajor, recommendedJavaRequirement, formatJavaRequirement } = require('./javaLocator');
 const { readSettings, saveSettings, touchAccount } = require('./accounts');
 
 function gamePaths(gameDir, versionId) {
@@ -344,15 +344,18 @@ async function launchVersion(versionId, account, options = {}) {
   const install = await installVersion(versionId, options);
   const settings = await readSettings();
   const nextSettings = await saveSettings({ ...settings, ...options, lastVersion: versionId, lastAccountId: account.id || account.uuid });
+  const javaRequirement = recommendedJavaRequirement(install.versionMeta);
   const requiredMajor = recommendedJavaMajor(install.versionMeta);
-  const java = await pickJava(requiredMajor, nextSettings.javaPath);
+  const java = await pickJava(javaRequirement, nextSettings.javaPath);
   if (!java) {
-    throw new Error(`No compatible Java installation found. Minecraft ${versionId} recommends Java ${requiredMajor}+; install Java or set a custom javaPath in settings.json.`);
+    const requirementLabel = formatJavaRequirement(javaRequirement);
+    const reason = javaRequirement.reason ? ` ${javaRequirement.reason}` : '';
+    throw new Error(`No compatible Java installation found. Minecraft ${versionId} requires ${requirementLabel}.${reason} Install a compatible Java runtime or set a custom javaPath in settings.json.`);
   }
 
   await touchAccount(account.id || account.uuid);
   const command = buildLaunchCommand(install.versionMeta, install.paths, account, nextSettings, java.path);
-  progressBus.emitEvent('launch-start', { versionId, java: java.path, requiredMajor, commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...` });
+  progressBus.emitEvent('launch-start', { versionId, java: java.path, requiredMajor, javaRequirement, commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...` });
 
   await ensureDir(command.cwd);
   const child = spawn(command.executable, command.args, {
