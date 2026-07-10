@@ -1,8 +1,54 @@
 # Amethyst
 
-Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.js** and browser UI assets. It is intentionally **not Python** and has no npm runtime dependencies.
+Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.js** and native UI options. The launcher logic is in Node.js, but you can choose from multiple native UI frontends.
 
 > Legal/download note: Amethyst does **not** include or redistribute Minecraft client code, libraries, assets, or copyrighted game files. When you install/launch a version, it reads Mojang's public version manifest and downloads the official files from Mojang/Microsoft-hosted URLs on the user's machine.
+
+## UI Options
+
+Choose the UI that best fits your needs:
+
+### 1. Browser UI (Default)
+The classic HTML/JS UI served locally. Works everywhere Node.js runs.
+
+```bash
+npm start
+```
+
+### 2. Qt/QML UI (`qt-ui/`)
+**Best for: Native desktop feel with modern, beautiful UI**
+
+Built with Qt6 and QML - the same framework used by Prism Launcher. Provides:
+- Native window controls
+- Modern declarative UI with smooth animations
+- Excellent cross-platform support
+- Professional look and feel
+
+**Build:**
+```bash
+cd qt-ui
+mkdir build && cd build
+cmake ..
+cmake --build . --parallel
+./Amethyst
+```
+
+### 3. Tauri UI (`tauri-ui/`)
+**Best for: Small bundle size with native feel**
+
+Built with Tauri (Rust) - uses the system webview instead of bundled Chromium:
+- ~5-10 MB bundle vs ~150 MB for Electron
+- Native window decorations
+- Rust-powered backend management
+- System integration
+
+**Build:**
+```bash
+cd tauri-ui
+npm install
+npm run tauri dev      # Development
+npm run tauri build    # Production build
+```
 
 ## Features
 
@@ -18,14 +64,23 @@ Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.j
 
 ## Requirements
 
-- Node.js 18 or newer.
+- Node.js 18 or newer (for the backend).
 - Java is required to actually launch Minecraft. Amethyst will try to detect Java automatically; if it cannot, install Java or set a Java path override in the UI.
 - Internet access is needed for first-time version downloads/news/version list.
 - Native library extraction uses:
   - `unzip` on Linux/macOS.
   - PowerShell `Expand-Archive` on Windows.
 
-## Quick start
+### Qt UI Additional Requirements
+- Qt 6.5+ with modules: Core, Gui, Widgets, Qml, Quick, QuickControls2, Network
+- CMake 3.16+
+- C++20 compiler
+
+### Tauri UI Additional Requirements
+- Rust toolchain
+- WebView2 (Windows), WebKit (macOS/Linux)
+
+## Quick start (Browser UI)
 
 ```bash
 npm start
@@ -49,26 +104,34 @@ Amethyst/
 ├── README.md
 ├── package.json
 ├── .gitignore
-├── public/
-│   ├── index.html          # Dark purple launcher UI
-│   ├── styles.css          # Amethyst theme and layout
-│   └── app.js              # Browser-side API calls, progress UI, settings forms
-├── src/
-│   ├── main.js             # App entry point; starts local launcher server
-│   ├── server.js           # Static UI, REST API, and Server-Sent Events
-│   ├── config.js           # App constants and default paths/settings
+├── public/                    # Browser UI assets
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── qt-ui/                     # Qt/QML UI (C++)
+│   ├── CMakeLists.txt
+│   ├── src/
+│   └── qml/
+├── tauri-ui/                  # Tauri UI (Rust + HTML)
+│   ├── package.json
+│   ├── src-tauri/
+│   └── src/
+├── src/                       # Shared backend (Node.js)
+│   ├── main.js
+│   ├── server.js
+│   ├── config.js
 │   └── launcher/
-│       ├── accounts.js     # Offline account creation and persisted settings
-│       ├── downloader.js   # Official file download, checksum, progress bus
-│       ├── javaLocator.js  # Java auto-detection and version parsing
-│       ├── minecraft.js    # Install/build classpath/launch vanilla versions
-│       ├── mojangApi.js    # Mojang version manifest and metadata helpers
-│       ├── news.js         # Minecraft launcher news feed with fallback
-│       ├── os.js           # OS/classpath helpers for Minecraft metadata
-│       ├── rules.js        # Mojang rule evaluation for libraries/arguments
-│       └── store.js        # Atomic JSON persistence helpers
+│       ├── accounts.js
+│       ├── downloader.js
+│       ├── javaLocator.js
+│       ├── minecraft.js
+│       ├── mojangApi.js
+│       ├── news.js
+│       ├── os.js
+│       ├── rules.js
+│       └── store.js
 └── test/
-    └── rules.test.js       # Lightweight unit smoke tests
+    └── rules.test.js
 ```
 
 ## How official version downloads work
@@ -89,8 +152,6 @@ Amethyst/
 ```bash
 npm test
 ```
-
-This project currently avoids external packages so the MVP can run with a plain Node.js install.
 
 ## MVP limitations
 

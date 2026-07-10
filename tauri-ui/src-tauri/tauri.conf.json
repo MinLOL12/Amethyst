@@ -1,0 +1,77 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src",
+    "devtools": true
+  },
+  "package": {
+    "productName": "Amethyst",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "open": true
+      },
+      "window": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Game",
+      "copyright": "Amethyst Contributors",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.amethyst.launcher",
+      "longDescription": "A dark purple Minecraft vanilla launcher",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Minecraft Launcher",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "width": 1200,
+        "minHeight": 600,
+        "minWidth": 900,
+        "resizable": true,
+        "title": "Amethyst",
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ]
+  }
+}

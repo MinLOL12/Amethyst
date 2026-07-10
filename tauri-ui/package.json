@@ -1,0 +1,13 @@
+{
+  "name": "amethyst-tauri",
+  "version": "0.1.0",
+  "description": "Amethyst Minecraft launcher with Tauri UI",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.0"
+  }
+}
