@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amethyst Launcher</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="gem">◆</div>
+        <div>
+          <h1>Amethyst</h1>
+          <p>Vanilla Launcher MVP</p>
+        </div>
+      </div>
+
+      <section class="card compact">
+        <h2>Offline Login</h2>
+        <form id="account-form" class="inline-form">
+          <input id="username" autocomplete="username" placeholder="Offline username" maxlength="16">
+          <button type="submit">Save</button>
+        </form>
+        <select id="account-select" aria-label="Saved account"></select>
+        <small>Offline accounts are saved locally only. They do not authenticate with Microsoft/Mojang.</small>
+      </section>
+
+      <section class="card compact">
+        <h2>Settings</h2>
+        <label class="slider-label" for="memory-slider">
+          Memory allocation
+          <strong><span id="memory-value">2048</span> MB</strong>
+        </label>
+        <input id="memory-slider" type="range" min="512" max="16384" step="256" value="2048">
+        <label for="java-path">Java path override</label>
+        <input id="java-path" placeholder="Auto-detect Java">
+        <button id="save-settings">Save settings</button>
+      </section>
+    </aside>
+
+    <main class="content">
+      <section class="hero card">
+        <div>
+          <span class="eyebrow">Dark purple Minecraft launcher</span>
+          <h2>Launch official vanilla versions</h2>
+          <p>Amethyst downloads Mojang's public version manifest, libraries, assets, and client jars at launch time. It does not bundle Minecraft code.</p>
+        </div>
+        <div class="actions">
+          <select id="version-select" aria-label="Minecraft version"></select>
+          <button id="install-button" class="secondary">Install</button>
+          <button id="launch-button" class="primary">Launch</button>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <div class="section-head">
+            <h2>Download progress</h2>
+            <span id="task-state" class="pill">Idle</span>
+          </div>
+          <div class="progress-wrap">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <div id="progress-text" class="progress-text">Waiting for a task…</div>
+          <pre id="log" class="log"></pre>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <h2>Detected Java</h2>
+            <button id="refresh-java" class="ghost">Refresh</button>
+          </div>
+          <div id="java-list" class="list muted">Scanning…</div>
+        </div>
+      </section>
+
+      <section class="card news-card">
+        <div class="section-head">
+          <h2>News</h2>
+          <button id="refresh-news" class="ghost">Refresh</button>
+        </div>
+        <div id="news" class="news-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <template id="news-template">
+    <article class="news-item">
+      <span class="news-meta"></span>
+      <h3></h3>
+      <p></p>
+      <a target="_blank" rel="noreferrer">Read more</a>
+    </article>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
