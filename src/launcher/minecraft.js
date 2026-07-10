@@ -37,12 +37,15 @@ function nativeClassifier(library) {
 }
 
 function libraryArtifact(library) {
-  if (library.downloads?.artifact) return library.downloads.artifact;
+  if (library.downloads) return library.downloads.artifact || null;
+
   const relativePath = artifactPathFromName(library.name);
   if (!relativePath) return null;
+  const normalizedPath = relativePath.replaceAll('\\', '/');
+  const baseUrl = library.url || 'https://libraries.minecraft.net/';
   return {
-    path: relativePath.replaceAll('\\', '/'),
-    url: `https://libraries.minecraft.net/${relativePath.replaceAll('\\', '/')}`
+    path: normalizedPath,
+    url: new URL(normalizedPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString()
   };
 }
 
@@ -53,11 +56,21 @@ function selectedLibraries(versionMeta) {
 function getLibraryDownloads(versionMeta, paths) {
   const downloads = [];
   const natives = [];
+  const seenDownloads = new Set();
+  const seenNatives = new Set();
+
+  function addDownload(download) {
+    const key = download.destination;
+    if (seenDownloads.has(key)) return false;
+    seenDownloads.add(key);
+    downloads.push(download);
+    return true;
+  }
 
   for (const library of selectedLibraries(versionMeta)) {
     const artifact = libraryArtifact(library);
     if (artifact?.url && artifact?.path) {
-      downloads.push({
+      addDownload({
         url: artifact.url,
         destination: path.join(paths.libraries, artifact.path),
         sha1: artifact.sha1,
@@ -70,14 +83,17 @@ function getLibraryDownloads(versionMeta, paths) {
     const nativeArtifact = classifier && library.downloads?.classifiers?.[classifier];
     if (nativeArtifact?.url && nativeArtifact?.path) {
       const destination = path.join(paths.libraries, nativeArtifact.path);
-      downloads.push({
+      addDownload({
         url: nativeArtifact.url,
         destination,
         sha1: nativeArtifact.sha1,
         size: nativeArtifact.size,
         label: `${library.name} (${classifier})`
       });
-      natives.push({ jar: destination, library, classifier });
+      if (!seenNatives.has(destination)) {
+        seenNatives.add(destination);
+        natives.push({ jar: destination, library, classifier });
+      }
     }
   }
 
