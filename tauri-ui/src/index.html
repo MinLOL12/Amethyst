@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*">
+    <title>Amethyst</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #9B59B6;
+            --primary-dark: #8E44AD;
+            --primary-light: #BB8FCE;
+            --accent: #E74C3C;
+            --bg: #1a1a2e;
+            --surface: #16213e;
+            --card: #1f2937;
+            --text: #ffffff;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --success: #2ecc71;
+            --warning: #f39c12;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        /* Main Layout */
+        .app {
+            display: flex;
+            height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 220px;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+        
+        .sidebar-header {
+            height: 80px;
+            background: var(--primary-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            -webkit-app-region: drag;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .sidebar-header span {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .nav {
+            flex: 1;
+            padding: 12px;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        
+        .nav-item:hover {
+            background: rgba(155, 89, 182, 0.1);
+        }
+        
+        .nav-item.active {
+            background: var(--primary);
+        }
+        
+        .nav-item .icon {
+            font-size: 20px;
+        }
+        
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        
+        .status-dot.connected {
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Main Content */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .top-bar {
+            height: 40px;
+            background: var(--card);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        
+        .progress-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .progress-bar {
+            width: 150px;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s;
+        }
+        
+        .content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        /* Page styles */
+        .page {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .card-header .icon {
+            font-size: 24px;
+        }
+        
+        .card-header h2 {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: var(--text);
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-light);
+        }
+        
+        .btn-accent {
+            background: var(--accent);
+            color: var(--text);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: var(--text);
+        }
+        
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+        }
+        
+        .btn-ghost:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        /* Form elements */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        /* Version list */
+        .version-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        
+        .version-item {
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        
+        .version-item:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .version-item.selected {
+            border-color: var(--primary);
+            background: rgba(155, 89, 182, 0.1);
+        }
+        
+        .version-type {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        
+        .version-type.release {
+            background: var(--success);
+        }
+        
+        .version-type.snapshot {
+            background: var(--warning);
+        }
+        
+        /* Account list */
+        .account-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .account-item:hover {
+            background: rgba(155, 89, 182, 0.1);
+        }
+        
+        .account-item.selected {
+            border: 2px solid var(--primary);
+        }
+        
+        .account-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .account-info h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        
+        .account-info span {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        
+        /* Slider */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            outline: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        
+        .slider-value {
+            min-width: 60px;
+            text-align: right;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--surface);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>💎 Amethyst</h1>
+                <span>Minecraft Launcher</span>
+            </div>
+            
+            <nav class="nav">
+                <div class="nav-item active" data-page="home">
+                    <span class="icon">🏠</span>
+                    <span>Home</span>
+                </div>
+                <div class="nav-item" data-page="versions">
+                    <span class="icon">📦</span>
+                    <span>Versions</span>
+                </div>
+                <div class="nav-item" data-page="accounts">
+                    <span class="icon">👤</span>
+                    <span>Accounts</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <span class="icon">⚙️</span>
+                    <span>Settings</span>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="connection-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Disconnected</span>
+                </div>
+                <div style="margin-top: 8px; font-size: 10px; color: var(--text-secondary);">
+                    v<span id="appVersion">0.1.0</span>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main -->
+        <main class="main">
+            <div class="top-bar">
+                <span>💾 <span id="dataRoot">Loading...</span></span>
+                <div class="progress-area">
+                    <div class="progress-bar" id="progressBar" style="display: none;">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <span id="statusMessage">Ready</span>
+                </div>
+            </div>
+            
+            <div class="content">
+                <!-- Home Page -->
+                <div class="page active" id="page-home">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">🏠</span>
+                            <h2>Welcome to Amethyst</h2>
+                        </div>
+                        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                            A dark purple Minecraft vanilla launcher built with Tauri
+                        </p>
+                        <button class="btn btn-primary" onclick="navigate('versions')">Browse Versions</button>
+                        <button class="btn btn-ghost" onclick="navigate('accounts')">Manage Accounts</button>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">🚀</span>
+                            <h2>Quick Launch</h2>
+                        </div>
+                        <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 16px;">
+                            <select class="form-input" id="quickVersion" style="flex: 1;">
+                                <option value="">Select version...</option>
+                            </select>
+                            <button class="btn btn-accent" onclick="quickLaunch()">▶ Launch</button>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Memory: <span id="memoryLabel">2 GB</span></label>
+                            <div class="slider-container">
+                                <span>512 MB</span>
+                                <input type="range" class="slider" id="memorySlider" min="512" max="16384" value="2048" step="256" oninput="updateMemory()">
+                                <span>16 GB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Versions Page -->
+                <div class="page" id="page-versions">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">📦</span>
+                            <h2>Minecraft Versions</h2>
+                        </div>
+                        <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                            <button class="btn btn-ghost" onclick="refreshVersions()">↻ Refresh</button>
+                            <input type="text" class="form-input" id="versionSearch" placeholder="Search versions..." style="max-width: 200px;" oninput="filterVersions()">
+                        </div>
+                        <div class="version-list" id="versionList">
+                            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                Loading versions...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Accounts Page -->
+                <div class="page" id="page-accounts">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="icon">👤</span>
+                                <h2>Offline Accounts</h2>
+                            </div>
+                            <div id="accountList">
+                                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                    No accounts yet
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="icon">➕</span>
+                                <h2>Add Account</h2>
+                            </div>
+                            <div style="background: rgba(155, 89, 182, 0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <p style="font-size: 14px;">ℹ️ Offline Mode Account</p>
+                                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                                    Offline accounts can only join offline servers and single-player worlds.
+                                </p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Username</label>
+                                <input type="text" class="form-input" id="newUsername" placeholder="Enter username...">
+                            </div>
+                            <button class="btn btn-success" onclick="addAccount()">➕ Add Account</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Settings Page -->
+                <div class="page" id="page-settings">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">⚙️</span>
+                            <h2>Settings</h2>
+                        </div>
+                        
+                        <h3 style="margin: 16px 0 8px; color: var(--primary);">Java Settings</h3>
+                        <div class="form-group">
+                            <label class="form-label">Java Path Override</label>
+                            <input type="text" class="form-input" id="javaPath" placeholder="Leave empty for auto-detect">
+                        </div>
+                        
+                        <h3 style="margin: 16px 0 8px; color: var(--primary);">Game Settings</h3>
+                        <div class="form-group">
+                            <label class="form-label">Memory: <span id="settingsMemoryLabel">2 GB</span></label>
+                            <div class="slider-container">
+                                <span>512 MB</span>
+                                <input type="range" class="slider" id="settingsMemorySlider" min="512" max="16384" value="2048" step="256">
+                                <span>16 GB</span>
+                            </div>
+                        </div>
+                        
+                        <h3 style="margin: 16px 0 8px; color: var(--primary);">Data</h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;" id="settingsDataRoot"></p>
+                        
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // State
+        let apiUrl = '';
+        let versions = [];
+        let accounts = [];
+        let selectedVersion = '';
+        let selectedAccount = '';
+        let memoryMb = 2048;
+        let eventSource = null;
+        
+        // Initialize
+        async function init() {
+            try {
+                // Get app info from Tauri
+                const dataRoot = await invoke('get_data_root');
+                const version = await invoke('get_app_version');
+                
+                document.getElementById('dataRoot').textContent = dataRoot;
+                document.getElementById('appVersion').textContent = version;
+                document.getElementById('settingsDataRoot').textContent = dataRoot;
+                
+                // Start backend
+                const port = await invoke('start_backend');
+                apiUrl = `http://127.0.0.1:${port}`;
+                
+                // Connect to API
+                await checkConnection();
+                await loadData();
+                startEventSource();
+                
+            } catch (e) {
+                console.error('Init error:', e);
+                setStatus('Error: ' + e.message, false);
+            }
+        }
+        
+        // API helpers
+        async function api(endpoint, options = {}) {
+            const res = await fetch(apiUrl + endpoint, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options
+            });
+            return res.json();
+        }
+        
+        async function checkConnection() {
+            try {
+                await api('/api/status');
+                setStatus('Connected', true);
+            } catch {
+                setStatus('Disconnected', false);
+            }
+        }
+        
+        async function loadData() {
+            await Promise.all([
+                loadVersions(),
+                loadAccounts(),
+                loadSettings()
+            ]);
+        }
+        
+        async function loadVersions() {
+            try {
+                const data = await api('/api/versions');
+                versions = data;
+                renderVersions(versions);
+            } catch (e) {
+                console.error('Load versions error:', e);
+            }
+        }
+        
+        async function loadAccounts() {
+            try {
+                const data = await api('/api/accounts');
+                accounts = data.accounts || [];
+                renderAccounts(accounts);
+            } catch (e) {
+                console.error('Load accounts error:', e);
+            }
+        }
+        
+        async function loadSettings() {
+            try {
+                const data = await api('/api/settings');
+                if (data.settings) {
+                    memoryMb = data.settings.memoryMb || 2048;
+                    document.getElementById('javaPath').value = data.settings.javaPath || '';
+                    updateMemorySliders();
+                }
+            } catch (e) {
+                console.error('Load settings error:', e);
+            }
+        }
+        
+        // Render functions
+        function renderVersions(versions) {
+            const list = document.getElementById('versionList');
+            const quickSelect = document.getElementById('quickVersion');
+            
+            if (versions.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No versions found</div>';
+                return;
+            }
+            
+            list.innerHTML = versions.map(v => `
+                <div class="version-item ${selectedVersion === v.id ? 'selected' : ''}" onclick="selectVersion('${v.id}')">
+                    <h3>${v.id} <span class="version-type ${v.type}">${v.type || 'release'}</span></h3>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                        ${v.releaseTime ? v.releaseTime.split('T')[0] : 'Unknown date'}
+                    </p>
+                    <button class="btn btn-primary" style="margin-top: 12px; width: 100%;" onclick="event.stopPropagation(); installVersion('${v.id}')">
+                        ⬇️ Install
+                    </button>
+                </div>
+            `).join('');
+            
+            quickSelect.innerHTML = '<option value="">Select version...</option>' + 
+                versions.map(v => `<option value="${v.id}">${v.id}</option>`).join('');
+        }
+        
+        function renderAccounts(accounts) {
+            const list = document.getElementById('accountList');
+            
+            if (accounts.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">👻 No accounts yet</div>';
+                return;
+            }
+            
+            list.innerHTML = accounts.map(a => `
+                <div class="account-item ${selectedAccount === a.id ? 'selected' : ''}" onclick="selectAccount('${a.id}')">
+                    <div class="account-avatar">${(a.username || '?').charAt(0).toUpperCase()}</div>
+                    <div class="account-info">
+                        <h3>${a.username}</h3>
+                        <span>UUID: ${a.uuid ? a.uuid.substring(0, 8) + '...' : 'None'}</span>
+                    </div>
+                    <button class="btn btn-ghost" onclick="event.stopPropagation(); removeAccount('${a.id}')">🗑️</button>
+                </div>
+            `).join('');
+        }
+        
+        // Actions
+        function selectVersion(id) {
+            selectedVersion = id;
+            renderVersions(versions);
+        }
+        
+        function selectAccount(id) {
+            selectedAccount = id;
+            renderAccounts(accounts);
+            api('/api/settings', {
+                method: 'POST',
+                body: JSON.stringify({ lastAccountId: id })
+            });
+        }
+        
+        async function addAccount() {
+            const username = document.getElementById('newUsername').value.trim();
+            if (!username) return;
+            
+            try {
+                await api('/api/accounts', {
+                    method: 'POST',
+                    body: JSON.stringify({ username })
+                });
+                document.getElementById('newUsername').value = '';
+                await loadAccounts();
+            } catch (e) {
+                alert('Failed to add account: ' + e.message);
+            }
+        }
+        
+        async function removeAccount(id) {
+            try {
+                await api(`/api/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                await loadAccounts();
+            } catch (e) {
+                alert('Failed to remove account: ' + e.message);
+            }
+        }
+        
+        async function installVersion(id) {
+            try {
+                setProgress(0, 'Installing ' + id);
+                await api('/api/install', {
+                    method: 'POST',
+                    body: JSON.stringify({ versionId: id, memoryMb })
+                });
+            } catch (e) {
+                alert('Install failed: ' + e.message);
+            }
+        }
+        
+        async function quickLaunch() {
+            const version = document.getElementById('quickVersion').value;
+            if (!version) return;
+            
+            try {
+                const accountId = selectedAccount || (accounts[0] && accounts[0].id);
+                if (!accountId) {
+                    alert('Please create an account first');
+                    navigate('accounts');
+                    return;
+                }
+                
+                await api('/api/launch', {
+                    method: 'POST',
+                    body: JSON.stringify({ versionId: version, accountId, memoryMb })
+                });
+            } catch (e) {
+                alert('Launch failed: ' + e.message);
+            }
+        }
+        
+        async function saveSettings() {
+            const settings = {
+                memoryMb: parseInt(document.getElementById('settingsMemorySlider').value),
+                javaPath: document.getElementById('javaPath').value
+            };
+            
+            try {
+                await api('/api/settings', {
+                    method: 'POST',
+                    body: JSON.stringify(settings)
+                });
+                setStatus('Settings saved!', true);
+            } catch (e) {
+                alert('Save failed: ' + e.message);
+            }
+        }
+        
+        function updateMemory() {
+            memoryMb = parseInt(document.getElementById('memorySlider').value);
+            document.getElementById('memoryLabel').textContent = Math.round(memoryMb / 1024) + ' GB';
+        }
+        
+        function updateMemorySliders() {
+            const memGb = Math.round(memoryMb / 1024);
+            document.getElementById('memorySlider').value = memoryMb;
+            document.getElementById('memoryLabel').textContent = memGb + ' GB';
+            document.getElementById('settingsMemorySlider').value = memoryMb;
+            document.getElementById('settingsMemoryLabel').textContent = memGb + ' GB';
+        }
+        
+        function filterVersions() {
+            const search = document.getElementById('versionSearch').value.toLowerCase();
+            const filtered = versions.filter(v => v.id.toLowerCase().includes(search));
+            renderVersions(filtered);
+        }
+        
+        // Event source (SSE)
+        function startEventSource() {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource(apiUrl + '/api/events');
+            
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    handleEvent(data);
+                } catch {}
+            };
+            
+            eventSource.onerror = () => {
+                setStatus('Reconnecting...', false);
+                setTimeout(startEventSource, 5000);
+            };
+        }
+        
+        function handleEvent(data) {
+            switch (data.type) {
+                case 'hello':
+                    setStatus('Connected', true);
+                    break;
+                case 'status':
+                    setStatus(data.message, true);
+                    break;
+                case 'download-progress':
+                    setProgress(data.percent, data.label);
+                    break;
+                case 'download-complete':
+                case 'task-complete':
+                    hideProgress();
+                    setStatus('Ready', true);
+                    break;
+                case 'task-error':
+                    hideProgress();
+                    setStatus('Error: ' + data.message, false);
+                    alert('Error: ' + data.message);
+                    break;
+            }
+        }
+        
+        // UI helpers
+        function navigate(page) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+            document.getElementById(`page-${page}`).classList.add('active');
+        }
+        
+        function setStatus(message, connected) {
+            document.getElementById('statusMessage').textContent = message;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            dot.className = 'status-dot' + (connected ? ' connected' : '');
+            text.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+        
+        function setProgress(percent, label) {
+            const bar = document.getElementById('progressBar');
+            const fill = document.getElementById('progressFill');
+            bar.style.display = 'flex';
+            fill.style.width = percent + '%';
+            setStatus(label + ' ' + percent + '%', true);
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressBar').style.display = 'none';
+        }
+        
+        // Nav event listeners
+        document.querySelectorAll('.nav-item').forEach(el => {
+            el.addEventListener('click', () => navigate(el.dataset.page));
+        });
+        
+        // Memory slider sync
+        document.getElementById('settingsMemorySlider').addEventListener('input', (e) => {
+            memoryMb = parseInt(e.target.value);
+            document.getElementById('settingsMemoryLabel').textContent = Math.round(memoryMb / 1024) + ' GB';
+        });
+        
+        // Initialize
+        init();
+    </script>
+</body>
+</html>
