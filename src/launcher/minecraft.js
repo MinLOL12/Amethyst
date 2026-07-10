@@ -303,6 +303,10 @@ function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPat
     assets_index_name: assetIndexName,
     auth_uuid: String(account.uuid).replaceAll('-', ''),
     auth_access_token: offlineToken,
+    // Legacy (1.7.x-1.12.x) metadata passes this value to Gson as a JSON map.
+    // Offline accounts have no profile properties, so provide an empty object
+    // rather than leaving the ${user_properties} placeholder as a plain string.
+    user_properties: '{}',
     clientid: '',
     auth_xuid: '',
     user_type: 'legacy',

@@ -1,7 +1,12 @@
 const assert = require('node:assert/strict');
 const { isAllowedByRules, osMatches } = require('../src/launcher/rules');
 const { offlineUuid, validateUsername } = require('../src/launcher/accounts');
-const { getLibraryDownloads, replacePlaceholders, legacySplitArguments } = require('../src/launcher/minecraft');
+const {
+  buildLaunchCommand,
+  getLibraryDownloads,
+  replacePlaceholders,
+  legacySplitArguments
+} = require('../src/launcher/minecraft');
 
 assert.equal(osMatches({ name: 'linux' }, { name: 'linux', arch: 'x64', version: '6.0' }), true);
 assert.equal(osMatches({ name: 'windows' }, { name: 'linux', arch: 'x64', version: '6.0' }), false);
@@ -20,6 +25,29 @@ assert.equal(offlineUuid('Steve'), '5627dd98-e6be-3c21-b8a8-e92344183641');
 
 assert.equal(replacePlaceholders('Hello ${name}', { name: 'Amethyst' }), 'Hello Amethyst');
 assert.deepEqual(legacySplitArguments('--username ${auth_player_name} --demo "two words"'), ['--username', '${auth_player_name}', '--demo', 'two words']);
+
+const legacyLaunch = buildLaunchCommand({
+  id: '1.7.10-pre2',
+  type: 'snapshot',
+  mainClass: 'net.minecraft.client.main.Main',
+  assets: '1.7.10',
+  minecraftArguments: '--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userProperties ${user_properties} --userType ${user_type}'
+}, {
+  root: '/minecraft',
+  libraries: '/minecraft/libraries',
+  clientJar: '/minecraft/versions/1.7.10-pre2/1.7.10-pre2.jar',
+  natives: '/minecraft/versions/1.7.10-pre2/natives',
+  assets: '/minecraft/assets'
+}, {
+  username: 'Steve',
+  uuid: '5627dd98-e6be-3c21-b8a8-e92344183641'
+}, {
+  memoryMb: 2048
+}, '/java');
+const userPropertiesIndex = legacyLaunch.args.indexOf('--userProperties');
+assert.notEqual(userPropertiesIndex, -1);
+assert.equal(legacyLaunch.args[userPropertiesIndex + 1], '{}');
+assert.equal(legacyLaunch.args.some((arg) => arg.includes('${user_properties}')), false);
 
 const rdStyleLibraries = {
   libraries: [
