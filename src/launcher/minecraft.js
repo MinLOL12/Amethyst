@@ -100,23 +100,75 @@ function getLibraryDownloads(versionMeta, paths) {
   return { downloads, natives };
 }
 
+/**
+ * Extract a JAR/ZIP archive using pure Node.js built-ins (no external tools needed).
+ * JAR files follow the ZIP specification; we parse the Central Directory to locate
+ * each entry then inflate (or copy) it to the destination directory.
+ */
 async function extractNativeJar(nativeJar, destination) {
   await ensureDir(destination);
-  const command = process.platform === 'win32' ? 'powershell.exe' : 'unzip';
-  const args = process.platform === 'win32'
-    ? ['-NoProfile', '-Command', `Expand-Archive -LiteralPath ${JSON.stringify(nativeJar)} -DestinationPath ${JSON.stringify(destination)} -Force`]
-    : ['-qq', '-o', nativeJar, '-d', destination];
 
-  await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'ignore' });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Failed to extract native library ${path.basename(nativeJar)} (exit ${code}). Install unzip or extract support on this system.`));
-    });
-  });
+  const zlib = require('node:zlib');
+  const buf = await fs.readFile(nativeJar);
 
-  await fs.rm(path.join(destination, 'META-INF'), { recursive: true, force: true });
+  // --- Locate End-of-Central-Directory record (EOCD) ---
+  // Signature: 0x06054b50.  Search from end of file backwards.
+  let eocdOffset = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf[i] === 0x50 && buf[i + 1] === 0x4b && buf[i + 2] === 0x05 && buf[i + 3] === 0x06) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) throw new Error(`Not a valid ZIP/JAR file: ${path.basename(nativeJar)}`);
+
+  const cdEntries = buf.readUInt16LE(eocdOffset + 8);
+  const cdOffset  = buf.readUInt32LE(eocdOffset + 16);
+
+  let pos = cdOffset;
+  for (let i = 0; i < cdEntries; i++) {
+    if (buf.readUInt32LE(pos) !== 0x02014b50) break; // Central directory file header signature
+
+    const compressionMethod = buf.readUInt16LE(pos + 10);
+    const compressedSize    = buf.readUInt32LE(pos + 20);
+    const uncompressedSize  = buf.readUInt32LE(pos + 24);
+    const fileNameLength    = buf.readUInt16LE(pos + 28);
+    const extraFieldLength  = buf.readUInt16LE(pos + 30);
+    const commentLength     = buf.readUInt16LE(pos + 32);
+    const localHeaderOffset = buf.readUInt32LE(pos + 42);
+    const entryName         = buf.toString('utf8', pos + 46, pos + 46 + fileNameLength);
+
+    pos += 46 + fileNameLength + extraFieldLength + commentLength;
+
+    // Skip directories and META-INF entries
+    if (entryName.endsWith('/') || entryName.startsWith('META-INF')) continue;
+
+    // Read local file header to find actual data offset
+    const localExtraLen = buf.readUInt16LE(localHeaderOffset + 28);
+    const localFileNameLen = buf.readUInt16LE(localHeaderOffset + 26);
+    const dataOffset = localHeaderOffset + 30 + localFileNameLen + localExtraLen;
+
+    const compressed = buf.slice(dataOffset, dataOffset + compressedSize);
+
+    let content;
+    if (compressionMethod === 0) {
+      // Stored (no compression)
+      content = compressed;
+    } else if (compressionMethod === 8) {
+      // Deflated
+      content = zlib.inflateRawSync(compressed);
+    } else {
+      throw new Error(`Unsupported ZIP compression method ${compressionMethod} in ${entryName}`);
+    }
+
+    if (content.length !== uncompressedSize) {
+      throw new Error(`Size mismatch for ${entryName} in ${path.basename(nativeJar)}`);
+    }
+
+    const outPath = path.join(destination, entryName);
+    await ensureDir(path.dirname(outPath));
+    await fs.writeFile(outPath, content);
+  }
 }
 
 async function downloadAssets(versionMeta, paths, concurrency) {
