@@ -174,12 +174,16 @@ async function downloadFile(url, destination, options = {}) {
     return { received: receivedBytes, total: totalBytes };
   }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
 
-    req.on('error', reject);
-    req.setTimeout(30000, () => {
-      req.destroy(new Error('Download timeout'));
-    });
-  });
+  if (sha1) {
+    const actual = await hashFile(temp, 'sha1');
+    if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
+      await fsp.rm(temp, { force: true });
+      throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
+    }
+  }
 
+  await fsp.rename(temp, destination);
+  progressBus.emitEvent('download-complete', { label, destination, received, total });
   return { destination, skipped: false };
 }
 
