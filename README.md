@@ -24,14 +24,20 @@ Built with Qt6 and QML - the same framework used by Prism Launcher. Provides:
 - Excellent cross-platform support
 - Professional look and feel
 
-**Build:**
+**Build (one-command installer):**
 ```bash
-cd qt-ui
-mkdir build && cd build
-cmake ..
-cmake --build . --parallel
+python3 qt-ui/install.py
+```
+
+The installer checks for Node.js, CMake and Qt6, downloads anything missing,
+and builds the project. After it finishes, run:
+
+```bash
+cd qt-ui/build
 ./Amethyst
 ```
+
+For manual build instructions, see `qt-ui/README.md`.
 
 ### 3. Tauri UI (`tauri-ui/`)
 **Best for: Small bundle size with native feel**
@@ -52,15 +58,15 @@ npm run tauri build    # Production build
 
 ## Features
 
-- Offline-mode login for MVP accounts.
-- Saves accounts and settings locally in `~/.amethyst` (or `AMETHYST_HOME`).
-- Automatically scans installed Java from `JAVA_HOME`, `JRE_HOME`, `PATH`, and common install directories.
-- Downloads and launches official vanilla Minecraft versions from Mojang metadata.
-- Shows live download/install/launch progress through Server-Sent Events.
-- Downloads client jar, libraries, native libraries, asset index, and assets from official manifest URLs.
-- Memory allocation slider (`512 MB` to `16 GB`).
-- News panel loaded from Minecraft launcher content, with graceful offline fallback.
-- Dark purple responsive UI.
+- Pure CLI — no HTML, no web JavaScript, no browser, no frontend.
+- Offline-mode accounts.
+- Local storage in `~/.amethyst` (or `AMETHYST_HOME`).
+- Auto-detects Java (JAVA_HOME, PATH, common locations).
+- Downloads + verifies official vanilla versions (client, libraries, natives, assets).
+- Robust downloader using native Node.js `http`/`https` streams (fixes previous freezes/hangs during install).
+- Interactive menu or direct CLI commands.
+- Memory control and Java override.
+- Optional web server mode (`--server`) only if you really want the old browser UI.
 
 ## Requirements
 
@@ -83,20 +89,82 @@ npm run tauri build    # Production build
 ## Quick start (Browser UI)
 
 ```bash
-npm start
+# Interactive menu (easiest)
+node src/main.js
+
+# Direct commands (no prompts)
+node src/main.js list
+node src/main.js install 1.21.1
+node src/main.js launch 1.21.1
+
+# Help
+node src/main.js help
 ```
 
-The backend binds to `127.0.0.1` on an available port and opens the UI in your browser. If the browser does not open automatically, copy the URL printed in the terminal.
-
-Useful environment variables:
+### Make it even easier (optional one-time)
 
 ```bash
-AMETHYST_HOME=/path/to/data npm start   # store accounts/settings/game files somewhere else
-AMETHYST_NO_OPEN=1 npm start            # do not auto-open a browser
-PORT=8080 npm start                     # choose a fixed local port
+# Linux / macOS
+chmod +x src/main.js
+./src/main.js install 1.21.1
+
+# Or create a tiny alias/script
+echo 'node "$(dirname "$0")/src/main.js" "$@"' > amethyst && chmod +x amethyst
+./amethyst install 1.21.3
 ```
 
-## File structure
+### Environment variables
+
+```bash
+AMETHYST_HOME=/custom/path node src/main.js
+```
+
+## Optional: Old browser UI mode
+
+Only if you want the web interface:
+
+```bash
+node src/main.js --server
+# or
+node src/main.js server
+```
+
+Then open the printed URL in a browser.
+
+## How to install a version (CLI)
+
+```bash
+node src/main.js install 1.20.6
+# or with version from interactive menu
+```
+
+Progress and logs are printed directly in the terminal. Downloads are reliable and no longer freeze.
+
+## File structure (key files)
+
+```text
+Amethyst/
+├── src/
+│   ├── main.js          # Entry point (CLI by default)
+│   ├── cli.js           # Pure terminal UI + commands
+│   ├── launcher/
+│   │   ├── downloader.js   # Robust Node http downloads (no web streams)
+│   │   ├── minecraft.js
+│   │   └── ...
+├── package.json         # Zero runtime deps
+└── ...
+```
+
+## Development / checks (optional)
+
+```bash
+node --check src/main.js
+npm test   # if you have npm
+```
+
+This project uses **zero npm dependencies** at runtime. Everything is built-in Node.js modules.
+
+## File structure (simplified for CLI)
 
 ```text
 Amethyst/
@@ -134,6 +202,8 @@ Amethyst/
     └── rules.test.js
 ```
 
+The `public/` folder only exists for the optional `--server` mode.
+
 ## How official version downloads work
 
 1. `src/launcher/mojangApi.js` fetches Mojang's version manifest from `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`.
@@ -155,6 +225,6 @@ npm test
 
 ## MVP limitations
 
-- Authentication is offline-mode only. Online Microsoft authentication is intentionally out of scope for the MVP.
-- Multiplayer servers that require authenticated Microsoft sessions will not accept offline accounts.
-- The launcher downloads official files but does not grant a Minecraft license. Users must comply with Minecraft's EULA and applicable terms.
+- Authentication is offline-mode only.
+- Multiplayer requiring Microsoft login will not work with offline accounts.
+- You must own Minecraft and comply with its EULA.

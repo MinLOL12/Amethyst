@@ -7,6 +7,12 @@ const {
   replacePlaceholders,
   legacySplitArguments
 } = require('../src/launcher/minecraft');
+const {
+  formatJavaRequirement,
+  isJavaCompatible,
+  recommendedJavaRequirement,
+  selectCompatibleJava
+} = require('../src/launcher/javaLocator');
 
 assert.equal(osMatches({ name: 'linux' }, { name: 'linux', arch: 'x64', version: '6.0' }), true);
 assert.equal(osMatches({ name: 'windows' }, { name: 'linux', arch: 'x64', version: '6.0' }), false);
@@ -86,5 +92,23 @@ assert.deepEqual(libraryDownloads.downloads.map((download) => download.label), [
 assert.equal(libraryDownloads.downloads.some((download) => download.destination.endsWith('jinput-platform-2.0.5.jar')), false);
 assert.equal(libraryDownloads.natives.length, 1);
 assert.equal(libraryDownloads.downloads[1].url, 'https://libraries.minecraft.net/net/minecraft/launchwrapper/1.6/launchwrapper-1.6.jar');
+
+const launchWrapperRequirement = recommendedJavaRequirement({
+  id: 'a1.0.17_04',
+  mainClass: 'net.minecraft.launchwrapper.Launch'
+});
+assert.equal(formatJavaRequirement(launchWrapperRequirement), 'Java 8');
+assert.equal(isJavaCompatible({ major: 8 }, launchWrapperRequirement), true);
+assert.equal(isJavaCompatible({ major: 21 }, launchWrapperRequirement), false);
+assert.equal(isJavaCompatible({ major: 0 }, launchWrapperRequirement), false);
+assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }], launchWrapperRequirement), null);
+assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }, { path: 'java8', major: 8 }], launchWrapperRequirement).path, 'java8');
+
+const java17Requirement = recommendedJavaRequirement({ javaVersion: { majorVersion: 17, component: 'java-runtime-gamma' } });
+assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }, { path: 'java17', major: 17 }], java17Requirement).path, 'java17');
+
+const java8PreferredRequirement = recommendedJavaRequirement({ id: '1.12.2', javaVersion: { majorVersion: 8, component: 'jre-legacy' } });
+assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }, { path: 'java8', major: 8 }], java8PreferredRequirement).path, 'java8');
+assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }], java8PreferredRequirement).path, 'java21');
 
 console.log('All tests passed.');

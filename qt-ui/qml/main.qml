@@ -36,7 +36,46 @@ ApplicationWindow {
     Component.onCompleted: {
         launcher.startBackend()
     }
-    
+
+    // Download / install progress and retry dialog
+    DownloadDialog {
+        id: downloadDialog
+    }
+
+    Connections {
+        target: apiClient
+
+        function onInstallComplete(versionId) {
+            downloadDialog.isComplete = true
+            downloadDialog.isInstalling = false
+            downloadDialog.errorMessage = ""
+        }
+    }
+
+    Connections {
+        target: launcher
+
+        function onInstallStarted(versionId) {
+            downloadDialog.versionId = versionId
+            downloadDialog.isComplete = false
+            downloadDialog.errorMessage = ""
+            downloadDialog.isInstalling = true
+            downloadDialog.open()
+        }
+
+        function onInstallFailed(versionId, error) {
+            downloadDialog.versionId = versionId
+            downloadDialog.errorMessage = error
+            downloadDialog.isComplete = false
+            downloadDialog.isInstalling = false
+            if (!downloadDialog.opened) downloadDialog.open()
+        }
+
+        function onNewsLoaded(news) {
+            homePage.loadNews(news)
+        }
+    }
+
     // Main layout
     RowLayout {
         anchors.fill: parent

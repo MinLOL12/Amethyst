@@ -7,53 +7,56 @@ Popup {
     id: root
     modal: true
     dim: true
-    closePolicy: Popup.NoAutoClose
-    
+    closePolicy: errorMessage.length > 0 || isComplete ? Popup.CloseOnEscape : Popup.NoAutoClose
+
     property string versionId: ""
-    property string downloadLabel: ""
-    property int downloadProgress: 0
+    property string errorMessage: ""
     property bool isInstalling: false
     property bool isComplete: false
-    property string errorMessage: ""
-    
-    width: 500
-    height: 300
+
+    // Live progress comes straight from the launcher controller.
+    property int downloadProgress: launcher.downloadProgress
+    property string downloadLabel: launcher.downloadLabel
+
+    width: 520
+    height: 340
     anchors.centerIn: parent
-    
+
     background: Rectangle {
         color: cardColor
         radius: 16
         border.color: primaryColor
         border.width: 2
     }
-    
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
         spacing: 20
-        
+
         // Header
         Row {
             spacing: 12
             Layout.alignment: Qt.AlignHCenter
-            
+
             Text {
                 text: "💎"
                 font.pixelSize: 32
                 anchors.verticalCenter: parent.verticalCenter
             }
-            
+
             Column {
                 spacing: 4
-                
+
                 Text {
-                    text: isComplete ? "Installation Complete!" : "Installing Version"
+                    text: isComplete ? "Installation Complete!" :
+                          errorMessage.length > 0 ? "Installation Failed" : "Installing Version"
                     color: textPrimary
                     font.pixelSize: 20
                     font.bold: true
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
-                
+
                 Text {
                     text: versionId
                     color: primaryColor
@@ -62,47 +65,49 @@ Popup {
                 }
             }
         }
-        
+
         // Progress area
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 120
+            Layout.preferredHeight: 140
             color: backgroundColor
             radius: 12
-            
+
             Column {
                 anchors.centerIn: parent
                 spacing: 16
-                
+                width: parent.width - 32
+
                 // Status icon
                 Text {
                     text: isComplete ? "✅" : (errorMessage.length > 0 ? "❌" : "⏳")
                     font.pixelSize: 48
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
-                
+
                 // Status text
                 Text {
-                    text: isComplete ? "Ready to play!" : 
+                    text: isComplete ? "Ready to play!" :
                           errorMessage.length > 0 ? errorMessage :
                           downloadLabel.length > 0 ? downloadLabel : "Preparing..."
-                    color: isComplete ? successColor : 
+                    color: isComplete ? successColor :
                            errorMessage.length > 0 ? accentColor : textSecondary
                     font.pixelSize: 14
                     anchors.horizontalCenter: parent.horizontalCenter
                     wrapMode: Text.WordWrap
                     horizontalAlignment: Text.AlignHCenter
+                    width: parent.width
                 }
-                
+
                 // Progress bar
                 ProgressBar {
-                    width: 300
+                    width: 320
                     value: downloadProgress / 100
                     visible: !isComplete && errorMessage.length === 0
                     Material.accent: primaryColor
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
-                
+
                 // Progress text
                 Text {
                     text: downloadProgress + "%"
@@ -114,38 +119,40 @@ Popup {
                 }
             }
         }
-        
+
         // Action buttons
         Row {
             spacing: 16
             Layout.alignment: Qt.AlignHCenter
-            
+
             Button {
-                text: isComplete ? "🎮 Play Now" : "Cancel"
-                highlighted: isComplete
-                Material.background: isComplete ? successColor : undefined
+                text: isComplete ? "🎮 Play Now" : "Retry"
+                highlighted: true
+                Material.background: isComplete ? successColor : primaryColor
                 width: 150
                 height: 45
-                enabled: isComplete || errorMessage.length > 0
-                
+                visible: isComplete || errorMessage.length > 0
+
                 onClicked: {
                     if (isComplete) {
                         launcher.launchVersion()
+                        root.close()
+                    } else {
+                        launcher.installVersion(versionId)
                     }
-                    root.close()
                 }
             }
-            
+
             Button {
                 text: "Close"
                 flat: true
                 width: 100
-                
+
                 onClicked: root.close()
             }
         }
     }
-    
+
     // Colors
     property color primaryColor: "#9B59B6"
     property color primaryDark: "#8E44AD"

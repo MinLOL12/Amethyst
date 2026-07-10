@@ -7,18 +7,32 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Qt6 with required modules
-find_package(Qt6 6.5 REQUIRED COMPONENTS 
-    Core 
-    Gui 
-    Widgets 
-    Qml 
-    Quick 
-    QuickControls2 
+# Try to locate Qt6. If it is not on the default search path, pass
+# -DCMAKE_PREFIX_PATH=<qt>/lib/cmake/Qt6 or set Qt6_DIR when configuring.
+find_package(Qt6 6.5 QUIET COMPONENTS
+    Core
+    Gui
+    Widgets
+    Qml
+    Quick
+    QuickControls2
     Network
 )
 
-# Application sources
+if(NOT Qt6_FOUND)
+    message(STATUS "")
+    message(STATUS "Qt6 was not found on the default search path.")
+    message(STATUS "You can either:")
+    message(STATUS "  1) Run the one-command installer: python3 qt-ui/install.py")
+    message(STATUS "  2) Install Qt 6.5+ manually and re-run CMake with")
+    message(STATUS "     -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/<arch>")
+    message(STATUS "")
+    # Re-run as REQUIRED so CMake produces its usual, detailed error.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS
+        Core Gui Widgets Qml Quick QuickControls2 Network
+    )
+endif()
+
 set(SOURCES
     src/main.cpp
     src/amaranthlauncher.cpp
@@ -27,28 +41,15 @@ set(SOURCES
     src/apiclient.h
 )
 
-# QML files
-set(QML_FILES
-    qml/main.qml
-    qml/HomePage.qml
-    qml/VersionsPage.qml
-    qml/AccountsPage.qml
-    qml/SettingsPage.qml
-    qml/DownloadDialog.qml
-)
-
-# Resources
 set(RESOURCES
     resources/amaranth.qrc
 )
 
 qt_add_executable(Amethyst
     ${SOURCES}
-    ${QML_FILES}
     ${RESOURCES}
 )
 
-# Link Qt libraries
 target_link_libraries(Amethyst PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -59,9 +60,7 @@ target_link_libraries(Amethyst PRIVATE
     Qt6::Network
 )
 
-# Include directories
 target_include_directories(Amethyst PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# Install targets
+# Install the binary.
 install(TARGETS Amethyst BUNDLE DESTINATION .)
-install(FILES ${QML_FILES} DESTINATION qml)
