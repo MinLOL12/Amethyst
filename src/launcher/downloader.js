@@ -10,6 +10,11 @@ const { URL } = require('node:url');
 const crypto = require('node:crypto');
 const { ensureDir } = require('./store');
 
+const USER_AGENT = 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)';
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_RETRIES = 3;
+const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND', 'EPROTO', 'EPIPE']);
+
 class ProgressBus extends EventEmitter {
   emitEvent(type, payload = {}) {
     this.emit('event', {
@@ -52,12 +57,67 @@ async function isValidExistingFile(file, expected = {}) {
   return true;
 }
 
-async function fetchJson(url, label = url) {
+function isRetryableError(error) {
+  if (!error) return true;
+  if (error.name === 'AbortError') return true;
+  const code = error.code || (error.cause && error.cause.code);
+  if (RETRYABLE_CODES.has(code)) return true;
+  if (error.status && (error.status >= 500 || error.status === 429 || error.status === 408)) return true;
+  return false;
+}
+
+async function withRetry(operation, options = {}) {
+  const maxRetries = Math.max(0, Number(options.maxRetries ?? DEFAULT_MAX_RETRIES));
+  const baseDelayMs = Math.max(100, Number(options.baseDelayMs ?? 1000));
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
+  const label = options.label || 'request';
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await operation(controller.signal);
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) break;
+
+      if (isRetryableError(error)) {
+        const delay = baseDelayMs * (2 ** attempt);
+        progressBus.emitEvent('status', {
+          message: `${label} failed (${error.message}). Retrying ${attempt + 1}/${maxRetries} in ${delay}ms...`
+        });
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const message = lastError?.message || `${label} failed after ${maxRetries + 1} attempts`;
+  const wrapped = new Error(message);
+  wrapped.cause = lastError;
+  if (lastError?.status) wrapped.status = lastError.status;
+  throw wrapped;
+}
+
+async function fetchJson(url, label = url, options = {}) {
   progressBus.emitEvent('status', { message: `Fetching ${label}` });
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' }
-  });
-  if (!response.ok) throw new Error(`Failed to fetch ${label}: HTTP ${response.status}`);
+  const response = await withRetry(async (signal) => {
+    const res = await fetch(url, {
+      signal,
+      headers: { 'User-Agent': USER_AGENT }
+    });
+    if (!res.ok) {
+      const error = new Error(`HTTP ${res.status} ${res.statusText}`);
+      error.status = res.status;
+      throw error;
+    }
+    return res;
+  }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
   return response.json();
 }
 
@@ -73,67 +133,46 @@ async function downloadFile(url, destination, options = {}) {
   const temp = `${destination}.part`;
   progressBus.emitEvent('download-start', { label, url, destination, size: size || 0 });
 
-  const parsed = new URL(url);
-  const lib = parsed.protocol === 'https:' ? https : http;
+  const { received, total } = await withRetry(async (signal) => {
+    // Remove any partial file from a previous failed attempt.
+    await fsp.rm(temp, { force: true });
 
-  const total = size || 0;
-  let received = 0;
-  let lastEmit = 0;
-
-  await new Promise((resolve, reject) => {
-    const req = lib.get(url, {
-      headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' }
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        // follow simple redirect once
-        res.resume();
-        downloadFile(res.headers.location, destination, options).then(resolve).catch(reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`Failed to download ${label}: HTTP ${res.statusCode}`));
-      }
-
-      const fileStream = fs.createWriteStream(temp);
-
-      const counter = new Transform({
-        transform(chunk, encoding, callback) {
-          received += chunk.length;
-          const now = Date.now();
-          if (now - lastEmit > 120 || (total > 0 && received >= total)) {
-            lastEmit = now;
-            progressBus.emitEvent('download-progress', {
-              label,
-              destination,
-              received,
-              total,
-              percent: total ? Math.round((received / total) * 1000) / 10 : 0
-            });
-          }
-          callback(null, chunk);
-        }
-      });
-
-      pipeline(res, counter, fileStream)
-        .then(async () => {
-          try {
-            if (sha1) {
-              const actual = await hashFile(temp, 'sha1');
-              if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
-                await fsp.rm(temp, { force: true });
-                throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
-              }
-            }
-            await fsp.rename(temp, destination);
-            progressBus.emitEvent('download-complete', { label, destination, received, total });
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        })
-        .catch(reject);
+    const response = await fetch(url, {
+      signal,
+      headers: { 'User-Agent': USER_AGENT }
     });
+    if (!response.ok || !response.body) {
+      const error = new Error(`HTTP ${response.status} ${response.statusText}`);
+      error.status = response.status;
+      throw error;
+    }
+
+    const totalBytes = Number(response.headers.get('content-length')) || size || 0;
+    let receivedBytes = 0;
+    let lastEmit = 0;
+
+    const writable = fs.createWriteStream(temp);
+    const counter = new TransformStream({
+      transform(chunk, controller) {
+        receivedBytes += chunk.byteLength;
+        const now = Date.now();
+        if (now - lastEmit > 150 || receivedBytes === totalBytes) {
+          lastEmit = now;
+          progressBus.emitEvent('download-progress', {
+            label,
+            destination,
+            received: receivedBytes,
+            total: totalBytes,
+            percent: totalBytes ? Math.round((receivedBytes / totalBytes) * 1000) / 10 : 0
+          });
+        }
+        controller.enqueue(chunk);
+      }
+    });
+
+    await pipeline(response.body.pipeThrough(counter), writable);
+    return { received: receivedBytes, total: totalBytes };
+  }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
 
     req.on('error', reject);
     req.setTimeout(30000, () => {
@@ -163,5 +202,8 @@ module.exports = {
   downloadFile,
   isValidExistingFile,
   hashFile,
-  mapLimit
+  mapLimit,
+  withRetry,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_RETRIES
 };

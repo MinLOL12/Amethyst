@@ -1,10 +1,60 @@
 # Amethyst
 
-**Amethyst** is a **standalone pure-Node.js Minecraft vanilla launcher** (no Python, **zero npm dependencies**, **no browser/HTML/JS required**).
-
-It is a **CLI-first** tool. You run it directly with `node`. No web server, no embedded website, no Electron, no HTML UI needed.
+Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.js** and native UI options. The launcher logic is in Node.js, but you can choose from multiple native UI frontends.
 
 > Legal/download note: Amethyst does **not** include or redistribute Minecraft client code, libraries, assets, or copyrighted game files. When you install/launch a version, it reads Mojang's public version manifest and downloads the official files from Mojang/Microsoft-hosted URLs on the user's machine.
+
+## UI Options
+
+Choose the UI that best fits your needs:
+
+### 1. Browser UI (Default)
+The classic HTML/JS UI served locally. Works everywhere Node.js runs.
+
+```bash
+npm start
+```
+
+### 2. Qt/QML UI (`qt-ui/`)
+**Best for: Native desktop feel with modern, beautiful UI**
+
+Built with Qt6 and QML - the same framework used by Prism Launcher. Provides:
+- Native window controls
+- Modern declarative UI with smooth animations
+- Excellent cross-platform support
+- Professional look and feel
+
+**Build (one-command installer):**
+```bash
+python3 qt-ui/install.py
+```
+
+The installer checks for Node.js, CMake and Qt6, downloads anything missing,
+and builds the project. After it finishes, run:
+
+```bash
+cd qt-ui/build
+./Amethyst
+```
+
+For manual build instructions, see `qt-ui/README.md`.
+
+### 3. Tauri UI (`tauri-ui/`)
+**Best for: Small bundle size with native feel**
+
+Built with Tauri (Rust) - uses the system webview instead of bundled Chromium:
+- ~5-10 MB bundle vs ~150 MB for Electron
+- Native window decorations
+- Rust-powered backend management
+- System integration
+
+**Build:**
+```bash
+cd tauri-ui
+npm install
+npm run tauri dev      # Development
+npm run tauri build    # Production build
+```
 
 ## Features
 
@@ -20,16 +70,23 @@ It is a **CLI-first** tool. You run it directly with `node`. No web server, no e
 
 ## Requirements
 
-- Node.js **18+** (no other runtime or npm packages needed).
-- Java 17+ (recommended 21) to actually run Minecraft.
-- Internet for first-time downloads of versions.
-- Native extraction:
-  - `unzip` (Linux/macOS)
-  - PowerShell (Windows)
+- Node.js 18 or newer (for the backend).
+- Java is required to actually launch Minecraft. Amethyst will try to detect Java automatically; if it cannot, install Java or set a Java path override in the UI.
+- Internet access is needed for first-time version downloads/news/version list.
+- Native library extraction uses:
+  - `unzip` on Linux/macOS.
+  - PowerShell `Expand-Archive` on Windows.
 
-## Quick Start (Standalone CLI — recommended)
+### Qt UI Additional Requirements
+- Qt 6.5+ with modules: Core, Gui, Widgets, Qml, Quick, QuickControls2, Network
+- CMake 3.16+
+- C++20 compiler
 
-No `npm install` required. Just have Node.js:
+### Tauri UI Additional Requirements
+- Rust toolchain
+- WebView2 (Windows), WebKit (macOS/Linux)
+
+## Quick start (Browser UI)
 
 ```bash
 # Interactive menu (easiest)
@@ -111,17 +168,38 @@ This project uses **zero npm dependencies** at runtime. Everything is built-in N
 
 ```text
 Amethyst/
-├── src/
-│   ├── main.js             # CLI entry (defaults to standalone menu)
-│   ├── cli.js              # Interactive + direct commands (no web)
-│   ├── server.js           # (optional) web backend only
+├── LICENSE
+├── README.md
+├── package.json
+├── .gitignore
+├── public/                    # Browser UI assets
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── qt-ui/                     # Qt/QML UI (C++)
+│   ├── CMakeLists.txt
+│   ├── src/
+│   └── qml/
+├── tauri-ui/                  # Tauri UI (Rust + HTML)
+│   ├── package.json
+│   ├── src-tauri/
+│   └── src/
+├── src/                       # Shared backend (Node.js)
+│   ├── main.js
+│   ├── server.js
 │   ├── config.js
 │   └── launcher/
-│       ├── downloader.js   # FIXED: pure Node http/https streams (no freezing)
-│       ├── minecraft.js
 │       ├── accounts.js
-│       └── ...
-└── ...
+│       ├── downloader.js
+│       ├── javaLocator.js
+│       ├── minecraft.js
+│       ├── mojangApi.js
+│       ├── news.js
+│       ├── os.js
+│       ├── rules.js
+│       └── store.js
+└── test/
+    └── rules.test.js
 ```
 
 The `public/` folder only exists for the optional `--server` mode.
@@ -144,15 +222,6 @@ The `public/` folder only exists for the optional `--server` mode.
 ```bash
 npm test
 ```
-
-This project currently avoids external packages so the MVP can run with a plain Node.js install.
-
-## Important notes
-
-- **Default mode is pure CLI** — no HTML, no browser window, no JavaScript web frontend.
-- To use the old web UI you must explicitly run with `--server`.
-- Downloads now use stable native Node.js streams instead of web `fetch` + `TransformStream` (the previous cause of "freezes forever" on install).
-- No packaging / exe / Electron is used. This is intentionally a lightweight `node` script.
 
 ## MVP limitations
 

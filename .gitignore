@@ -13,11 +13,10 @@ Thumbs.db
 node_modules/
 npm-debug.log*
 
-# Electron build output
-dist/
-electron-builder-*.yml
-*.asar
+# Python cache from the Qt installer
+__pycache__/
+*.pyc
 
-# Build resources (generated icons are OK to keep)
-# build/icon.ico
-# build/icon.png
+# Qt UI build artifacts and downloaded Qt
+qt-ui/build/
+qt-ui/.qt/
