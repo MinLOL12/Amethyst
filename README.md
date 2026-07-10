@@ -1,75 +1,130 @@
 # Amethyst
 
-Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.js** and browser UI assets. It is intentionally **not Python** and has no npm runtime dependencies.
+**Amethyst** is a **standalone pure-Node.js Minecraft vanilla launcher** (no Python, **zero npm dependencies**, **no browser/HTML/JS required**).
+
+It is a **CLI-first** tool. You run it directly with `node`. No web server, no embedded website, no Electron, no HTML UI needed.
 
 > Legal/download note: Amethyst does **not** include or redistribute Minecraft client code, libraries, assets, or copyrighted game files. When you install/launch a version, it reads Mojang's public version manifest and downloads the official files from Mojang/Microsoft-hosted URLs on the user's machine.
 
 ## Features
 
-- Offline-mode login for MVP accounts.
-- Saves accounts and settings locally in `~/.amethyst` (or `AMETHYST_HOME`).
-- Automatically scans installed Java from `JAVA_HOME`, `JRE_HOME`, `PATH`, and common install directories.
-- Downloads and launches official vanilla Minecraft versions from Mojang metadata.
-- Shows live download/install/launch progress through Server-Sent Events.
-- Downloads client jar, libraries, native libraries, asset index, and assets from official manifest URLs.
-- Memory allocation slider (`512 MB` to `16 GB`).
-- News panel loaded from Minecraft launcher content, with graceful offline fallback.
-- Dark purple responsive UI.
+- Pure CLI — no HTML, no web JavaScript, no browser, no frontend.
+- Offline-mode accounts.
+- Local storage in `~/.amethyst` (or `AMETHYST_HOME`).
+- Auto-detects Java (JAVA_HOME, PATH, common locations).
+- Downloads + verifies official vanilla versions (client, libraries, natives, assets).
+- Robust downloader using native Node.js `http`/`https` streams (fixes previous freezes/hangs during install).
+- Interactive menu or direct CLI commands.
+- Memory control and Java override.
+- Optional web server mode (`--server`) only if you really want the old browser UI.
 
 ## Requirements
 
-- Node.js 18 or newer.
-- Java is required to actually launch Minecraft. Amethyst will try to detect Java automatically; if it cannot, install Java or set a Java path override in the UI.
-- Internet access is needed for first-time version downloads/news/version list.
-- Native library extraction uses:
-  - `unzip` on Linux/macOS.
-  - PowerShell `Expand-Archive` on Windows.
+- Node.js **18+** (no other runtime or npm packages needed).
+- Java 17+ (recommended 21) to actually run Minecraft.
+- Internet for first-time downloads of versions.
+- Native extraction:
+  - `unzip` (Linux/macOS)
+  - PowerShell (Windows)
 
-## Quick start
+## Quick Start (Standalone CLI — recommended)
 
-```bash
-npm start
-```
-
-The backend binds to `127.0.0.1` on an available port and opens the UI in your browser. If the browser does not open automatically, copy the URL printed in the terminal.
-
-Useful environment variables:
+No `npm install` required. Just have Node.js:
 
 ```bash
-AMETHYST_HOME=/path/to/data npm start   # store accounts/settings/game files somewhere else
-AMETHYST_NO_OPEN=1 npm start            # do not auto-open a browser
-PORT=8080 npm start                     # choose a fixed local port
+# Interactive menu (easiest)
+node src/main.js
+
+# Direct commands (no prompts)
+node src/main.js list
+node src/main.js install 1.21.1
+node src/main.js launch 1.21.1
+
+# Help
+node src/main.js help
 ```
 
-## File structure
+### Make it even easier (optional one-time)
+
+```bash
+# Linux / macOS
+chmod +x src/main.js
+./src/main.js install 1.21.1
+
+# Or create a tiny alias/script
+echo 'node "$(dirname "$0")/src/main.js" "$@"' > amethyst && chmod +x amethyst
+./amethyst install 1.21.3
+```
+
+### Environment variables
+
+```bash
+AMETHYST_HOME=/custom/path node src/main.js
+```
+
+## Optional: Old browser UI mode
+
+Only if you want the web interface:
+
+```bash
+node src/main.js --server
+# or
+node src/main.js server
+```
+
+Then open the printed URL in a browser.
+
+## How to install a version (CLI)
+
+```bash
+node src/main.js install 1.20.6
+# or with version from interactive menu
+```
+
+Progress and logs are printed directly in the terminal. Downloads are reliable and no longer freeze.
+
+## File structure (key files)
 
 ```text
 Amethyst/
-├── LICENSE
-├── README.md
-├── package.json
-├── .gitignore
-├── public/
-│   ├── index.html          # Dark purple launcher UI
-│   ├── styles.css          # Amethyst theme and layout
-│   └── app.js              # Browser-side API calls, progress UI, settings forms
 ├── src/
-│   ├── main.js             # App entry point; starts local launcher server
-│   ├── server.js           # Static UI, REST API, and Server-Sent Events
-│   ├── config.js           # App constants and default paths/settings
-│   └── launcher/
-│       ├── accounts.js     # Offline account creation and persisted settings
-│       ├── downloader.js   # Official file download, checksum, progress bus
-│       ├── javaLocator.js  # Java auto-detection and version parsing
-│       ├── minecraft.js    # Install/build classpath/launch vanilla versions
-│       ├── mojangApi.js    # Mojang version manifest and metadata helpers
-│       ├── news.js         # Minecraft launcher news feed with fallback
-│       ├── os.js           # OS/classpath helpers for Minecraft metadata
-│       ├── rules.js        # Mojang rule evaluation for libraries/arguments
-│       └── store.js        # Atomic JSON persistence helpers
-└── test/
-    └── rules.test.js       # Lightweight unit smoke tests
+│   ├── main.js          # Entry point (CLI by default)
+│   ├── cli.js           # Pure terminal UI + commands
+│   ├── launcher/
+│   │   ├── downloader.js   # Robust Node http downloads (no web streams)
+│   │   ├── minecraft.js
+│   │   └── ...
+├── package.json         # Zero runtime deps
+└── ...
 ```
+
+## Development / checks (optional)
+
+```bash
+node --check src/main.js
+npm test   # if you have npm
+```
+
+This project uses **zero npm dependencies** at runtime. Everything is built-in Node.js modules.
+
+## File structure (simplified for CLI)
+
+```text
+Amethyst/
+├── src/
+│   ├── main.js             # CLI entry (defaults to standalone menu)
+│   ├── cli.js              # Interactive + direct commands (no web)
+│   ├── server.js           # (optional) web backend only
+│   ├── config.js
+│   └── launcher/
+│       ├── downloader.js   # FIXED: pure Node http/https streams (no freezing)
+│       ├── minecraft.js
+│       ├── accounts.js
+│       └── ...
+└── ...
+```
+
+The `public/` folder only exists for the optional `--server` mode.
 
 ## How official version downloads work
 
@@ -92,8 +147,15 @@ npm test
 
 This project currently avoids external packages so the MVP can run with a plain Node.js install.
 
+## Important notes
+
+- **Default mode is pure CLI** — no HTML, no browser window, no JavaScript web frontend.
+- To use the old web UI you must explicitly run with `--server`.
+- Downloads now use stable native Node.js streams instead of web `fetch` + `TransformStream` (the previous cause of "freezes forever" on install).
+- No packaging / exe / Electron is used. This is intentionally a lightweight `node` script.
+
 ## MVP limitations
 
-- Authentication is offline-mode only. Online Microsoft authentication is intentionally out of scope for the MVP.
-- Multiplayer servers that require authenticated Microsoft sessions will not accept offline accounts.
-- The launcher downloads official files but does not grant a Minecraft license. Users must comply with Minecraft's EULA and applicable terms.
+- Authentication is offline-mode only.
+- Multiplayer requiring Microsoft login will not work with offline accounts.
+- You must own Minecraft and comply with its EULA.
