@@ -7,7 +7,7 @@ const { downloadFile, fetchJson, mapLimit, progressBus } = require('./downloader
 const { ensureDir, writeJson } = require('./store');
 const { isAllowedByRules } = require('./rules');
 const { minecraftOsName, classpathSeparator } = require('./os');
-const { pickJava, recommendedJavaMajor } = require('./javaLocator');
+const { pickJava, recommendedJavaMajor, recommendedJavaRequirement, formatJavaRequirement } = require('./javaLocator');
 const { readSettings, saveSettings, touchAccount } = require('./accounts');
 
 function gamePaths(gameDir, versionId) {
@@ -37,12 +37,15 @@ function nativeClassifier(library) {
 }
 
 function libraryArtifact(library) {
-  if (library.downloads?.artifact) return library.downloads.artifact;
+  if (library.downloads) return library.downloads.artifact || null;
+
   const relativePath = artifactPathFromName(library.name);
   if (!relativePath) return null;
+  const normalizedPath = relativePath.replaceAll('\\', '/');
+  const baseUrl = library.url || 'https://libraries.minecraft.net/';
   return {
-    path: relativePath.replaceAll('\\', '/'),
-    url: `https://libraries.minecraft.net/${relativePath.replaceAll('\\', '/')}`
+    path: normalizedPath,
+    url: new URL(normalizedPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString()
   };
 }
 
@@ -53,11 +56,21 @@ function selectedLibraries(versionMeta) {
 function getLibraryDownloads(versionMeta, paths) {
   const downloads = [];
   const natives = [];
+  const seenDownloads = new Set();
+  const seenNatives = new Set();
+
+  function addDownload(download) {
+    const key = download.destination;
+    if (seenDownloads.has(key)) return false;
+    seenDownloads.add(key);
+    downloads.push(download);
+    return true;
+  }
 
   for (const library of selectedLibraries(versionMeta)) {
     const artifact = libraryArtifact(library);
     if (artifact?.url && artifact?.path) {
-      downloads.push({
+      addDownload({
         url: artifact.url,
         destination: path.join(paths.libraries, artifact.path),
         sha1: artifact.sha1,
@@ -70,37 +83,92 @@ function getLibraryDownloads(versionMeta, paths) {
     const nativeArtifact = classifier && library.downloads?.classifiers?.[classifier];
     if (nativeArtifact?.url && nativeArtifact?.path) {
       const destination = path.join(paths.libraries, nativeArtifact.path);
-      downloads.push({
+      addDownload({
         url: nativeArtifact.url,
         destination,
         sha1: nativeArtifact.sha1,
         size: nativeArtifact.size,
         label: `${library.name} (${classifier})`
       });
-      natives.push({ jar: destination, library, classifier });
+      if (!seenNatives.has(destination)) {
+        seenNatives.add(destination);
+        natives.push({ jar: destination, library, classifier });
+      }
     }
   }
 
   return { downloads, natives };
 }
 
+/**
+ * Extract a JAR/ZIP archive using pure Node.js built-ins (no external tools needed).
+ * JAR files follow the ZIP specification; we parse the Central Directory to locate
+ * each entry then inflate (or copy) it to the destination directory.
+ */
 async function extractNativeJar(nativeJar, destination) {
   await ensureDir(destination);
-  const command = process.platform === 'win32' ? 'powershell.exe' : 'unzip';
-  const args = process.platform === 'win32'
-    ? ['-NoProfile', '-Command', `Expand-Archive -LiteralPath ${JSON.stringify(nativeJar)} -DestinationPath ${JSON.stringify(destination)} -Force`]
-    : ['-qq', '-o', nativeJar, '-d', destination];
 
-  await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'ignore' });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Failed to extract native library ${path.basename(nativeJar)} (exit ${code}). Install unzip or extract support on this system.`));
-    });
-  });
+  const zlib = require('node:zlib');
+  const buf = await fs.readFile(nativeJar);
 
-  await fs.rm(path.join(destination, 'META-INF'), { recursive: true, force: true });
+  // --- Locate End-of-Central-Directory record (EOCD) ---
+  // Signature: 0x06054b50.  Search from end of file backwards.
+  let eocdOffset = -1;
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf[i] === 0x50 && buf[i + 1] === 0x4b && buf[i + 2] === 0x05 && buf[i + 3] === 0x06) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) throw new Error(`Not a valid ZIP/JAR file: ${path.basename(nativeJar)}`);
+
+  const cdEntries = buf.readUInt16LE(eocdOffset + 8);
+  const cdOffset  = buf.readUInt32LE(eocdOffset + 16);
+
+  let pos = cdOffset;
+  for (let i = 0; i < cdEntries; i++) {
+    if (buf.readUInt32LE(pos) !== 0x02014b50) break; // Central directory file header signature
+
+    const compressionMethod = buf.readUInt16LE(pos + 10);
+    const compressedSize    = buf.readUInt32LE(pos + 20);
+    const uncompressedSize  = buf.readUInt32LE(pos + 24);
+    const fileNameLength    = buf.readUInt16LE(pos + 28);
+    const extraFieldLength  = buf.readUInt16LE(pos + 30);
+    const commentLength     = buf.readUInt16LE(pos + 32);
+    const localHeaderOffset = buf.readUInt32LE(pos + 42);
+    const entryName         = buf.toString('utf8', pos + 46, pos + 46 + fileNameLength);
+
+    pos += 46 + fileNameLength + extraFieldLength + commentLength;
+
+    // Skip directories and META-INF entries
+    if (entryName.endsWith('/') || entryName.startsWith('META-INF')) continue;
+
+    // Read local file header to find actual data offset
+    const localExtraLen = buf.readUInt16LE(localHeaderOffset + 28);
+    const localFileNameLen = buf.readUInt16LE(localHeaderOffset + 26);
+    const dataOffset = localHeaderOffset + 30 + localFileNameLen + localExtraLen;
+
+    const compressed = buf.slice(dataOffset, dataOffset + compressedSize);
+
+    let content;
+    if (compressionMethod === 0) {
+      // Stored (no compression)
+      content = compressed;
+    } else if (compressionMethod === 8) {
+      // Deflated
+      content = zlib.inflateRawSync(compressed);
+    } else {
+      throw new Error(`Unsupported ZIP compression method ${compressionMethod} in ${entryName}`);
+    }
+
+    if (content.length !== uncompressedSize) {
+      throw new Error(`Size mismatch for ${entryName} in ${path.basename(nativeJar)}`);
+    }
+
+    const outPath = path.join(destination, entryName);
+    await ensureDir(path.dirname(outPath));
+    await fs.writeFile(outPath, content);
+  }
 }
 
 async function downloadAssets(versionMeta, paths, concurrency) {
@@ -276,15 +344,18 @@ async function launchVersion(versionId, account, options = {}) {
   const install = await installVersion(versionId, options);
   const settings = await readSettings();
   const nextSettings = await saveSettings({ ...settings, ...options, lastVersion: versionId, lastAccountId: account.id || account.uuid });
+  const javaRequirement = recommendedJavaRequirement(install.versionMeta);
   const requiredMajor = recommendedJavaMajor(install.versionMeta);
-  const java = await pickJava(requiredMajor, nextSettings.javaPath);
+  const java = await pickJava(javaRequirement, nextSettings.javaPath);
   if (!java) {
-    throw new Error(`No compatible Java installation found. Minecraft ${versionId} recommends Java ${requiredMajor}+; install Java or set a custom javaPath in settings.json.`);
+    const requirementLabel = formatJavaRequirement(javaRequirement);
+    const reason = javaRequirement.reason ? ` ${javaRequirement.reason}` : '';
+    throw new Error(`No compatible Java installation found. Minecraft ${versionId} requires ${requirementLabel}.${reason} Install a compatible Java runtime or set a custom javaPath in settings.json.`);
   }
 
   await touchAccount(account.id || account.uuid);
   const command = buildLaunchCommand(install.versionMeta, install.paths, account, nextSettings, java.path);
-  progressBus.emitEvent('launch-start', { versionId, java: java.path, requiredMajor, commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...` });
+  progressBus.emitEvent('launch-start', { versionId, java: java.path, requiredMajor, javaRequirement, commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...` });
 
   await ensureDir(command.cwd);
   const child = spawn(command.executable, command.args, {
