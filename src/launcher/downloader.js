@@ -58,7 +58,7 @@ async function fetchJson(url, label = url) {
 }
 
 async function downloadFile(url, destination, options = {}) {
-  const { sha1, size, label = path.basename(destination) } = options;
+  const { sha1, size, label = path.basename(destination), retries = 3 } = options;
   if (await isValidExistingFile(destination, { sha1, size })) {
     progressBus.emitEvent('download-skip', { label, destination });
     return { destination, skipped: true };
@@ -66,51 +66,100 @@ async function downloadFile(url, destination, options = {}) {
 
   await ensureDir(path.dirname(destination));
   const temp = `${destination}.part`;
-  progressBus.emitEvent('download-start', { label, url, destination, size: size || 0 });
 
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' }
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download ${label}: HTTP ${response.status}`);
-  }
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const controller = new AbortController();
+    const signal = controller.signal;
 
-  const total = Number(response.headers.get('content-length')) || size || 0;
-  let received = 0;
-  let lastEmit = 0;
+    // Set connection timeout: 15 seconds to establish headers
+    const connectionTimeout = setTimeout(() => {
+      controller.abort(new Error('Connection timeout (15s exceeded)'));
+    }, 15000);
 
-  const writable = fs.createWriteStream(temp);
-  const counter = new TransformStream({
-    transform(chunk, controller) {
-      received += chunk.byteLength;
-      const now = Date.now();
-      if (now - lastEmit > 150 || received === total) {
-        lastEmit = now;
-        progressBus.emitEvent('download-progress', {
-          label,
-          destination,
-          received,
-          total,
-          percent: total ? Math.round((received / total) * 1000) / 10 : 0
-        });
+    try {
+      progressBus.emitEvent('download-start', { label, url, destination, size: size || 0 });
+
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' },
+        signal
+      });
+
+      clearTimeout(connectionTimeout);
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Failed to download ${label}: HTTP ${response.status}`);
       }
-      controller.enqueue(chunk);
-    }
-  });
 
-  await pipeline(response.body.pipeThrough(counter), writable);
+      const total = Number(response.headers.get('content-length')) || size || 0;
+      let received = 0;
+      let lastEmit = 0;
 
-  if (sha1) {
-    const actual = await hashFile(temp, 'sha1');
-    if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
-      await fsp.rm(temp, { force: true });
-      throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
+      const writable = fs.createWriteStream(temp);
+
+      // Inactivity/activity timeout: if no chunks are received for 15 seconds, abort.
+      let inactivityTimeout;
+      const resetInactivityTimeout = () => {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = setTimeout(() => {
+          controller.abort(new Error('Inactivity timeout (15s without data stream chunks)'));
+        }, 15000);
+      };
+
+      resetInactivityTimeout();
+
+      const counter = new TransformStream({
+        transform(chunk, controllerInstance) {
+          resetInactivityTimeout();
+          received += chunk.byteLength;
+          const now = Date.now();
+          if (now - lastEmit > 150 || received === total) {
+            lastEmit = now;
+            progressBus.emitEvent('download-progress', {
+              label,
+              destination,
+              received,
+              total,
+              percent: total ? Math.round((received / total) * 1000) / 10 : 0
+            });
+          }
+          controllerInstance.enqueue(chunk);
+        },
+        flush() {
+          clearTimeout(inactivityTimeout);
+        }
+      });
+
+      await pipeline(response.body.pipeThrough(counter), writable);
+      clearTimeout(inactivityTimeout);
+
+      if (sha1) {
+        const actual = await hashFile(temp, 'sha1');
+        if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
+          throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
+        }
+      }
+
+      await fsp.rename(temp, destination);
+      progressBus.emitEvent('download-complete', { label, destination, received, total });
+      return { destination, skipped: false };
+
+    } catch (err) {
+      clearTimeout(connectionTimeout);
+      // Ensure temp/part file is removed on failure
+      try {
+        await fsp.rm(temp, { force: true });
+      } catch (_) {}
+
+      if (attempt > retries) {
+        throw err;
+      }
+      console.warn(`Download failed for ${label} (attempt ${attempt}/${retries + 1}): ${err.message}. Retrying...`);
+      // Wait a short backoff period before retrying
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
     }
   }
-
-  await fsp.rename(temp, destination);
-  progressBus.emitEvent('download-complete', { label, destination, received, total });
-  return { destination, skipped: false };
 }
 
 async function mapLimit(items, limit, worker) {
