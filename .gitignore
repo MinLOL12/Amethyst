@@ -1,0 +1,14 @@
+# Runtime data and local launcher files
+.amethyst/
+logs/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node package manager output (no dependencies required for MVP)
+node_modules/
+npm-debug.log*
