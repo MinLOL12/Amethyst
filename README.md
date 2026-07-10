@@ -24,14 +24,19 @@ Built with Qt6 and QML - the same framework used by Prism Launcher. Provides:
 - Excellent cross-platform support
 - Professional look and feel
 
-**Build:**
+**Build and run (Python is not required):**
 ```bash
-cd qt-ui
-mkdir build && cd build
-cmake ..
-cmake --build . --parallel
-./Amethyst
+# Linux/macOS
+./qt-ui/build.sh --run
+
+# Windows
+qt-ui\build.bat --run
+
+# Or on every platform, using the Node.js runtime already required by Amethyst
+npm run qt:run
 ```
+
+The helper checks Node.js, CMake, and Qt, then configures and builds the native executable. See [`qt-ui/README.md`](qt-ui/README.md) for prerequisites and manual build instructions.
 
 ### 3. Tauri UI (`tauri-ui/`)
 **Best for: Small bundle size with native feel**
@@ -75,6 +80,7 @@ npm run tauri build    # Production build
 - Qt 6.5+ with modules: Core, Gui, Widgets, Qml, Quick, QuickControls2, Network
 - CMake 3.16+
 - C++20 compiler
+- Python is **not** required; the setup helper uses Node.js, which the launcher backend already requires.
 
 ### Tauri UI Additional Requirements
 - Rust toolchain

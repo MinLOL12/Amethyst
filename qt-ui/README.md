@@ -21,53 +21,87 @@ A native desktop UI for the Amethyst Minecraft launcher, built with **Qt6** and 
 
 ### Prerequisites
 
-- **Qt 6.5+** (or Qt 5.15+)
+- **Node.js 18+** (also used by the launcher backend)
+- **Qt 6.5+**
 - **CMake 3.16+**
 - **C++20 compatible compiler**
   - GCC 11+
   - Clang 14+
   - MSVC 2022+
 
-### Install Qt
+**Python is not required.** The included setup helper is written in Node.js and
+uses only built-in Node modules.
 
-**Windows/macOS:**
-Download from https://www.qt.io/download
+### Install Qt and CMake
+
+**Windows:**
+
+Install CMake with `winget install Kitware.CMake` and download Qt 6.5+ from
+https://www.qt.io/download. If Qt is not on the normal CMake search path, pass
+its compiler-specific prefix with `--qt-dir`, for example:
+
+```bat
+qt-ui\build.bat --qt-dir C:\Qt\6.8.0\msvc2022_64 --run
+```
 
 **Linux (Ubuntu/Debian):**
+
 ```bash
-sudo apt install qt6-base-dev qt6-qmltooling qtdeclarative6-dev cmake build-essential
+sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick-controls cmake build-essential
 ```
+
+Package names can differ by distribution.
 
 **macOS (Homebrew):**
+
 ```bash
-brew install qt6 cmake
+brew install qt@6 cmake
 ```
 
-### Build
+### One-command setup, build, and run
+
+From the project root:
 
 ```bash
-cd qt-ui
-mkdir build
-cd build
-cmake ..
-cmake --build . --parallel
+# Linux/macOS
+./qt-ui/build.sh --run
+
+# Windows
+qt-ui\build.bat --run
 ```
 
-### Run
+The same helper can be called directly on every platform:
 
 ```bash
-# From the build directory
-./Amethyst
+node qt-ui/install.js --run
+# or
+npm run qt:run
+```
 
-# Or from the project root (after install)
+Useful options include `--clean`, `--build-type Debug`, `--qt-dir <path>`,
+`--jobs <count>`, and `--configure-only`. Run `node qt-ui/install.js --help`
+for the complete list.
+
+### Manual build
+
+If you prefer to invoke CMake yourself:
+
+```bash
+cmake -S qt-ui -B qt-ui/build -DCMAKE_BUILD_TYPE=Release
+cmake --build qt-ui/build --config Release --parallel
 ./qt-ui/build/Amethyst
 ```
+
+On Windows, the executable may be at `qt-ui\build\Release\Amethyst.exe`.
 
 ## Architecture
 
 ```
 qt-ui/
 ├── CMakeLists.txt          # CMake build configuration
+├── CMakePresets.json       # Release and debug CMake presets
+├── install.js              # Python-free setup/build/run helper
+├── build.sh / build.bat    # Platform-friendly wrappers
 ├── src/
 │   ├── main.cpp             # Application entry point
 │   ├── amaranthlauncher.h   # Main window controller
