@@ -2,13 +2,21 @@
   "name": "amethyst-launcher",
   "version": "0.1.0",
   "description": "Amethyst - a dark purple vanilla Minecraft launcher MVP built with Node.js (no Python).",
-  "main": "src/main.js",
+  "main": "src/electron.js",
   "type": "commonjs",
   "scripts": {
     "start": "node src/main.js",
-    "dev": "AMETHYST_DEV=1 node src/main.js",
+    "dev": "AMETHYST_DEV=1 electron src/electron.js",
     "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/javaLocator.js && node --check src/launcher/minecraft.js && node --check src/launcher/mojangApi.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js",
-    "test": "npm run check && node test/rules.test.js"
+    "test": "npm run check && node test/rules.test.js",
+    "electron:dev": "AMETHYST_DEV=1 electron src/electron.js",
+    "electron:build": "electron-builder",
+    "electron:build:win": "electron-builder --win",
+    "electron:build:mac": "electron-builder --mac",
+    "electron:build:linux": "electron-builder --linux",
+    "dist": "electron-builder --publish=never",
+    "dist:win": "electron-builder --win --publish=never",
+    "dist:nsis": "electron-builder --win nsis --publish=never"
   },
   "keywords": [
     "minecraft",
@@ -21,5 +29,68 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.amethyst.launcher",
+    "productName": "Amethyst Launcher",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "maximum",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Amethyst-Launcher-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Amethyst Launcher",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon-header.ico",
+      "license": "LICENSE",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "menuCategory": "Games"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.games",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Game",
+      "icon": "build/icon.png"
+    },
+    "portable": {
+      "artifactName": "Amethyst-Launcher-${version}-portable.${ext}"
+    }
   }
 }
