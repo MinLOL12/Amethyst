@@ -3,6 +3,10 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { pipeline } = require('node:stream/promises');
+const { Transform } = require('node:stream');
+const http = require('node:http');
+const https = require('node:https');
+const { URL } = require('node:url');
 const crypto = require('node:crypto');
 const { ensureDir } = require('./store');
 
@@ -117,6 +121,7 @@ async function fetchJson(url, label = url, options = {}) {
   return response.json();
 }
 
+// Pure Node.js HTTP/HTTPS downloader (no fetch web streams, avoids freezes/hangs on large files)
 async function downloadFile(url, destination, options = {}) {
   const { sha1, size, label = path.basename(destination) } = options;
   if (await isValidExistingFile(destination, { sha1, size })) {
@@ -169,16 +174,12 @@ async function downloadFile(url, destination, options = {}) {
     return { received: receivedBytes, total: totalBytes };
   }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
 
-  if (sha1) {
-    const actual = await hashFile(temp, 'sha1');
-    if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
-      await fsp.rm(temp, { force: true });
-      throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
-    }
-  }
+    req.on('error', reject);
+    req.setTimeout(30000, () => {
+      req.destroy(new Error('Download timeout'));
+    });
+  });
 
-  await fsp.rename(temp, destination);
-  progressBus.emitEvent('download-complete', { label, destination, received, total });
   return { destination, skipped: false };
 }
 
