@@ -16,7 +16,12 @@ ApiClient::ApiClient(QObject *parent)
 {
     m_networkManager = new QNetworkAccessManager(this);
     m_eventManager = new QNetworkAccessManager(this);
-    
+
+    // Time out ordinary API requests after 30 seconds so a hung backend
+    // does not leave the UI stuck forever. SSE uses its own manager so it
+    // is not affected by this timeout.
+    m_networkManager->setTransferTimeout(30000);
+
     // Try to find backend port from environment or default
     QString port = qEnvironmentVariable("PORT", "0");
     if (port == "0") {
@@ -224,11 +229,17 @@ void ApiClient::makeRequest(const QString &path, const QString &method, const QJ
         } else if (path == "/api/java") {
             connect(reply, &QNetworkReply::finished, this, &ApiClient::onJavaFinished);
         } else if (path == "/api/accounts") {
-            connect(reply, &QNetworkReply::finished, this, &ApiClient::onAccountsFinished);
+            if (method == "GET") {
+                connect(reply, &QNetworkReply::finished, this, &ApiClient::onAccountsFinished);
+            } else if (method == "POST") {
+                connect(reply, &QNetworkReply::finished, this, &ApiClient::onAddAccountFinished);
+            }
         } else if (path == "/api/settings") {
             connect(reply, &QNetworkReply::finished, this, &ApiClient::onSettingsFinished);
         } else if (path == "/api/news") {
             connect(reply, &QNetworkReply::finished, this, &ApiClient::onNewsFinished);
+        } else if (path.startsWith("/api/accounts/")) {
+            connect(reply, &QNetworkReply::finished, this, &ApiClient::onRemoveAccountFinished);
         } else if (path.startsWith("/api/install")) {
             connect(reply, &QNetworkReply::finished, this, &ApiClient::onInstallFinished);
         } else if (path.startsWith("/api/launch")) {
@@ -251,12 +262,24 @@ void ApiClient::onNetworkError(QNetworkReply::NetworkError error)
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    
+
     QString path = m_pendingRequests.value(reply, "unknown");
-    qDebug() << "Network error for" << path << ":" << reply->errorString();
-    
-    emit error(reply->errorString());
+    QString message = reply->errorString();
+    if (error == QNetworkReply::TimeoutError) {
+        message = "Request to the backend timed out. Is the backend still running?";
+    } else if (error == QNetworkReply::ConnectionRefusedError) {
+        message = "Could not connect to the Amethyst backend. It may still be starting up.";
+    }
+    qDebug() << "Network error for" << path << ":" << message;
+
+    // Install/launch errors are reported by the dedicated finished handlers so
+    // the UI can show them inside the download dialog instead of a popup.
+    const bool isInstallOrLaunch = path.startsWith("/api/install") || path.startsWith("/api/launch");
+    if (!isInstallOrLaunch) {
+        emit error(message);
+    }
     m_pendingRequests.remove(reply);
+    reply->deleteLater();
 }
 
 void ApiClient::onStatusRequestFinished()
@@ -492,21 +515,28 @@ void ApiClient::onInstallFinished()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    
+
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject obj = doc.object();
-        
+
         QString versionId = obj["versionId"].toString();
         emit installComplete(versionId);
     } else {
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject obj = doc.object();
-        emit installError(obj["error"].toString());
+        QString message = obj["error"].toString();
+        if (message.isEmpty()) {
+            message = reply->errorString();
+        }
+        if (message.isEmpty()) {
+            message = "Installation failed for an unknown reason.";
+        }
+        emit installError(message);
     }
-    
+
     m_pendingRequests.remove(reply);
     reply->deleteLater();
 }
@@ -531,21 +561,28 @@ void ApiClient::onLaunchFinished()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    
+
     if (reply->error() == QNetworkReply::NoError) {
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject obj = doc.object();
-        
+
         QString versionId = obj["versionId"].toString();
         emit launchComplete(versionId);
     } else {
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject obj = doc.object();
-        emit launchError(obj["error"].toString());
+        QString message = obj["error"].toString();
+        if (message.isEmpty()) {
+            message = reply->errorString();
+        }
+        if (message.isEmpty()) {
+            message = "Launch failed for an unknown reason.";
+        }
+        emit launchError(message);
     }
-    
+
     m_pendingRequests.remove(reply);
     reply->deleteLater();
 }

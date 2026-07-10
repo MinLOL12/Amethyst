@@ -26,6 +26,8 @@ class AmaranthLauncher : public QObject
     Q_PROPERTY(QString busyTask READ busyTask NOTIFY busyTaskChanged)
     Q_PROPERTY(QString selectedVersion READ selectedVersion WRITE setSelectedVersion NOTIFY selectedVersionChanged)
     Q_PROPERTY(int memoryMb READ memoryMb WRITE setMemoryMb NOTIFY memoryMbChanged)
+    Q_PROPERTY(bool installing READ installing NOTIFY installingChanged)
+    Q_PROPERTY(QString installError READ installError WRITE setInstallError NOTIFY installErrorChanged)
 
 public:
     explicit AmaranthLauncher(QObject *parent = nullptr);
@@ -77,10 +79,17 @@ public:
     // Progress
     int downloadProgress() const { return m_downloadProgress; }
     void setDownloadProgress(int progress);
-    
+
     QString downloadLabel() const { return m_downloadLabel; }
     void setDownloadLabel(const QString &label);
-    
+
+    // Install state (drives the download / retry dialog)
+    bool installing() const { return m_installing; }
+    void setInstalling(bool installing);
+
+    QString installError() const { return m_installError; }
+    void setInstallError(const QString &error);
+
 signals:
     void currentPageChanged();
     void statusMessageChanged();
@@ -99,6 +108,10 @@ signals:
     void launchFinished();
     void errorOccurred(const QString &error);
     void newsLoaded(const QVariantList &news);
+    void installingChanged();
+    void installErrorChanged();
+    void installStarted(const QString &versionId);
+    void installFailed(const QString &versionId, const QString &error);
 
 public slots:
     // Backend process management
@@ -142,6 +155,7 @@ private slots:
     void onApiNewsReceived(const QJsonArray &news);
     void onApiError(const QString &error);
     void onApiInstallComplete(const QString &versionId);
+    void onApiInstallError(const QString &error);
     void onApiLaunchComplete(const QString &versionId);
     void onApiLaunchError(const QString &error);
     void onApiProgress(const QString &task, int progress, const QString &label);
@@ -154,6 +168,7 @@ private:
     QString m_statusMessage;
     QString m_busyTask;
     QString m_selectedVersion;
+    QString m_installingVersionId;
     int m_memoryMb = 2048;
     QVariantList m_versions;
     QVariantList m_javaInstallations;
@@ -162,9 +177,13 @@ private:
     QString m_javaPathOverride;
     int m_downloadProgress = 0;
     QString m_downloadLabel;
+    bool m_installing = false;
+    QString m_installError;
     QVariantList m_news;
     QSettings m_settings;
-    
+
     QString findNodeExecutable() const;
     QString getAppPath() const;
+    QString getProjectRoot() const;
+    quint16 findFreePort() const;
 };

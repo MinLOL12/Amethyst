@@ -91,8 +91,7 @@ private slots:
     void onEventReplyFinished();
     
     void onNetworkError(QNetworkReply::NetworkError error);
-    void onSslErrors(const QList<QSslError> &errors);
-    
+
     // Event source (SSE) handling
     void startEventSource();
     void onEventDataAvailable();

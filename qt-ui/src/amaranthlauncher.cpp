@@ -11,6 +11,8 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QDebug>
+#include <QTcpServer>
+#include <QHostAddress>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -69,6 +71,7 @@ void AmaranthLauncher::setApiClient(ApiClient *client)
         connect(m_apiClient, &ApiClient::newsReceived, this, &AmaranthLauncher::onApiNewsReceived);
         connect(m_apiClient, &ApiClient::error, this, &AmaranthLauncher::onApiError);
         connect(m_apiClient, &ApiClient::installComplete, this, &AmaranthLauncher::onApiInstallComplete);
+        connect(m_apiClient, &ApiClient::installError, this, &AmaranthLauncher::onApiInstallError);
         connect(m_apiClient, &ApiClient::launchComplete, this, &AmaranthLauncher::onApiLaunchComplete);
         connect(m_apiClient, &ApiClient::launchError, this, &AmaranthLauncher::onApiLaunchError);
         connect(m_apiClient, &ApiClient::progress, this, &AmaranthLauncher::onApiProgress);
@@ -84,38 +87,44 @@ void AmaranthLauncher::startBackend()
     if (m_backendProcess->state() != QProcess::NotRunning) {
         return;
     }
-    
+
     QString nodePath = findNodeExecutable();
     if (nodePath.isEmpty()) {
-        showError("Node.js Not Found", 
+        showError("Node.js Not Found",
                   "Amethyst requires Node.js 18 or newer to run.\n\n"
                   "Please install Node.js from https://nodejs.org/");
         return;
     }
-    
-    // Get the app directory (where the Node.js source is)
-    QString appPath = getAppPath();
-    QString serverScript = appPath + QDir::separator() + "src" + QDir::separator() + "main.js";
-    
+
+    // Locate the repository root (parent directory of qt-ui) so the backend
+    // works whether the binary is run from the build directory or installed.
+    QString projectRoot = getProjectRoot();
+    QString serverScript = projectRoot + QDir::separator() + "src" + QDir::separator() + "main.js";
+
     if (!QFileInfo::exists(serverScript)) {
-        showError("Startup Error", 
+        showError("Startup Error",
                   QString("Could not find launcher script at:\n%1").arg(serverScript));
         return;
     }
-    
+
+    // Pick a free loopback port and tell both the backend and the API client
+    // to use it. This avoids hard-coding port 3000 and failing when it is
+    // already in use.
+    quint16 port = findFreePort();
+    if (m_apiClient) {
+        m_apiClient->setBaseUrl(QString("http://127.0.0.1:%1").arg(port));
+    }
+
     qDebug() << "Starting backend with Node.js:" << nodePath;
     qDebug() << "Script:" << serverScript;
-    
-    // Set working directory to app root
+    qDebug() << "Backend port:" << port;
+
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    m_backendProcess->setProcessEnvironment(env);
-    m_backendProcess->setWorkingDirectory(appPath);
-    
-    // Don't auto-open browser
     env.insert("AMETHYST_NO_OPEN", "1");
+    env.insert("PORT", QString::number(port));
     m_backendProcess->setProcessEnvironment(env);
-    
-    // Start Node.js with the main script
+    m_backendProcess->setWorkingDirectory(projectRoot);
+
     m_backendProcess->start(nodePath, QStringList() << serverScript);
 }
 
@@ -172,8 +181,32 @@ QString AmaranthLauncher::findNodeExecutable() const
 QString AmaranthLauncher::getAppPath() const
 {
     // Get the directory where the Qt application is located
-    // This should be the Amethyst root directory
     return QApplication::applicationDirPath();
+}
+
+QString AmaranthLauncher::getProjectRoot() const
+{
+    QString dir = getAppPath();
+    for (int i = 0; i < 4; ++i) {
+        QString candidate = QDir(dir).absoluteFilePath("src/main.js");
+        if (QFileInfo::exists(candidate)) {
+            return QDir(dir).absolutePath();
+        }
+        if (!QDir(dir).cdUp()) {
+            break;
+        }
+    }
+    return getAppPath();
+}
+
+quint16 AmaranthLauncher::findFreePort() const
+{
+    QTcpServer server;
+    if (server.listen(QHostAddress::LocalHost, 0)) {
+        return server.serverPort();
+    }
+    qDebug() << "Could not find a free port dynamically, falling back to 18171";
+    return 18171;
 }
 
 void AmaranthLauncher::onBackendStarted()
@@ -311,6 +344,22 @@ void AmaranthLauncher::setDownloadLabel(const QString &label)
     }
 }
 
+void AmaranthLauncher::setInstalling(bool installing)
+{
+    if (m_installing != installing) {
+        m_installing = installing;
+        emit installingChanged();
+    }
+}
+
+void AmaranthLauncher::setInstallError(const QString &error)
+{
+    if (m_installError != error) {
+        m_installError = error;
+        emit installErrorChanged();
+    }
+}
+
 // API Calls
 void AmaranthLauncher::refreshVersions()
 {
@@ -364,6 +413,18 @@ void AmaranthLauncher::removeAccount(const QString &accountId)
 void AmaranthLauncher::installVersion(const QString &versionId)
 {
     if (m_apiClient && !versionId.isEmpty()) {
+        if (m_installing) {
+            showNotification("An install is already in progress.");
+            return;
+        }
+
+        m_installingVersionId = versionId;
+        setInstalling(true);
+        setInstallError(QString());
+        setDownloadProgress(0);
+        setDownloadLabel("Preparing installation...");
+        emit installStarted(versionId);
+
         QVariantMap options;
         options["memoryMb"] = m_memoryMb;
         if (!m_javaPathOverride.isEmpty()) {
@@ -485,8 +546,19 @@ void AmaranthLauncher::onApiError(const QString &error)
 
 void AmaranthLauncher::onApiInstallComplete(const QString &versionId)
 {
+    setInstalling(false);
+    setInstallError(QString());
     m_statusMessage = QString("Installed %1").arg(versionId);
     emit statusMessageChanged();
+}
+
+void AmaranthLauncher::onApiInstallError(const QString &error)
+{
+    setInstalling(false);
+    setInstallError(error);
+    m_statusMessage = QString("Install failed: %1").arg(error);
+    emit statusMessageChanged();
+    emit installFailed(m_installingVersionId, error);
 }
 
 void AmaranthLauncher::onApiLaunchComplete(const QString &versionId)
