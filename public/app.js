@@ -265,11 +265,79 @@ function bindUi() {
   });
 }
 
+async function initElectronIntegration() {
+  // Check if running inside Electron
+  if (typeof window.AmethystAPI !== 'undefined' && window.AmethystAPI.isElectron) {
+    const section = document.getElementById('desktop-shortcuts-section');
+    if (section) section.style.display = 'grid';
+
+    const createBtn = document.getElementById('create-desktop-btn');
+    const pinBtn = document.getElementById('pin-taskbar-btn');
+    const unpinBtn = document.getElementById('unpin-taskbar-btn');
+    const status = document.getElementById('shortcut-status');
+
+    if (createBtn) {
+      createBtn.addEventListener('click', async () => {
+        try {
+          const result = await window.AmethystAPI.createDesktopShortcut();
+          if (result && status) status.textContent = 'Desktop shortcut created!';
+          else if (status) status.textContent = 'Shortcut may already exist.';
+        } catch (error) {
+          if (status) status.textContent = `Error: ${error.message}`;
+        }
+      });
+    }
+
+    if (pinBtn) {
+      pinBtn.addEventListener('click', async () => {
+        try {
+          const result = await window.AmethystAPI.pinToTaskbar();
+          if (result && status) {
+            status.textContent = 'Pinned to taskbar!';
+            pinBtn.style.display = 'none';
+            if (unpinBtn) unpinBtn.style.display = 'block';
+          } else if (status) {
+            status.textContent = 'Could not pin to taskbar. Try right-clicking the taskbar icon.';
+          }
+        } catch (error) {
+          if (status) status.textContent = `Error: ${error.message}`;
+        }
+      });
+    }
+
+    if (unpinBtn) {
+      unpinBtn.addEventListener('click', async () => {
+        try {
+          const result = await window.AmethystAPI.unpinFromTaskbar();
+          if (result && status) {
+            status.textContent = 'Unpinned from taskbar.';
+            unpinBtn.style.display = 'none';
+            if (pinBtn) pinBtn.style.display = 'block';
+          } else if (status) {
+            status.textContent = 'Could not unpin. Try manually unpinning.';
+          }
+        } catch (error) {
+          if (status) status.textContent = `Error: ${error.message}`;
+        }
+      });
+    }
+
+    // Log that we're running in Electron
+    try {
+      const version = await window.AmethystAPI.getVersion();
+      log(`Running in Electron (app version ${version})`);
+    } catch (_) {
+      log('Running in Electron');
+    }
+  }
+}
+
 async function boot() {
   bindUi();
   connectEvents();
   await loadSettings();
   await Promise.all([loadAccounts(), loadVersions(), loadJava(), loadNews()]);
+  await initElectronIntegration();
 }
 
 boot().catch((error) => log(error.message, 'error'));

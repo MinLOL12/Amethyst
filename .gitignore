@@ -9,6 +9,15 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Node package manager output (no dependencies required for MVP)
+# Node package manager output
 node_modules/
 npm-debug.log*
+
+# Electron build output
+dist/
+electron-builder-*.yml
+*.asar
+
+# Build resources (generated icons are OK to keep)
+# build/icon.ico
+# build/icon.png
