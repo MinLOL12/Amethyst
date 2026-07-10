@@ -3,20 +3,12 @@
   "version": "0.1.0",
   "description": "Amethyst - a dark purple vanilla Minecraft launcher MVP built with Node.js (no Python).",
   "main": "src/main.js",
-  "bin": "src/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "node src/main.js",
     "dev": "AMETHYST_DEV=1 node src/main.js",
     "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/javaLocator.js && node --check src/launcher/minecraft.js && node --check src/launcher/mojangApi.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js",
-    "test": "npm run check && node test/rules.test.js",
-    "package": "pkg . --out-path dist",
-    "package:all": "pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path dist"
-  },
-  "pkg": {
-    "assets": [
-      "public/**/*"
-    ]
+    "test": "npm run check && node test/rules.test.js"
   },
   "keywords": [
     "minecraft",
@@ -29,9 +21,5 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
-  },
-  "devDependencies": {
-    "@yao-pkg/pkg": "^6.21.0",
-    "pkg": "^5.8.1"
   }
 }

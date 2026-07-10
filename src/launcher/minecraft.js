@@ -121,19 +121,11 @@ async function downloadAssets(versionMeta, paths, concurrency) {
   await mapLimit(objects, concurrency, async ([name, object]) => {
     const hash = object.hash;
     const prefix = hash.slice(0, 2);
-    try {
-      await downloadFile(`${RESOURCES_BASE_URL}/${prefix}/${hash}`, path.join(paths.assetObjects, prefix, hash), {
-        sha1: hash,
-        size: object.size,
-        label: `asset ${name}`
-      });
-    } catch (err) {
-      console.error(`Non-fatal: Failed to download asset ${name} after all retries:`, err);
-      progressBus.emitEvent('game-log', {
-        stream: 'stderr',
-        message: `Non-fatal: Failed to download asset ${name}: ${err.message}\n`
-      });
-    }
+    await downloadFile(`${RESOURCES_BASE_URL}/${prefix}/${hash}`, path.join(paths.assetObjects, prefix, hash), {
+      sha1: hash,
+      size: object.size,
+      label: `asset ${name}`
+    });
     completed += 1;
     if (completed % 25 === 0 || completed === objects.length) {
       progressBus.emitEvent('assets-progress', {
