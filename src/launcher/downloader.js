@@ -3,6 +3,10 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { pipeline } = require('node:stream/promises');
+const { Transform } = require('node:stream');
+const http = require('node:http');
+const https = require('node:https');
+const { URL } = require('node:url');
 const crypto = require('node:crypto');
 const { ensureDir } = require('./store');
 
@@ -57,6 +61,7 @@ async function fetchJson(url, label = url) {
   return response.json();
 }
 
+// Pure Node.js HTTP/HTTPS downloader (no fetch web streams, avoids freezes/hangs on large files)
 async function downloadFile(url, destination, options = {}) {
   const { sha1, size, label = path.basename(destination) } = options;
   if (await isValidExistingFile(destination, { sha1, size })) {
@@ -68,48 +73,74 @@ async function downloadFile(url, destination, options = {}) {
   const temp = `${destination}.part`;
   progressBus.emitEvent('download-start', { label, url, destination, size: size || 0 });
 
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' }
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download ${label}: HTTP ${response.status}`);
-  }
+  const parsed = new URL(url);
+  const lib = parsed.protocol === 'https:' ? https : http;
 
-  const total = Number(response.headers.get('content-length')) || size || 0;
+  const total = size || 0;
   let received = 0;
   let lastEmit = 0;
 
-  const writable = fs.createWriteStream(temp);
-  const counter = new TransformStream({
-    transform(chunk, controller) {
-      received += chunk.byteLength;
-      const now = Date.now();
-      if (now - lastEmit > 150 || received === total) {
-        lastEmit = now;
-        progressBus.emitEvent('download-progress', {
-          label,
-          destination,
-          received,
-          total,
-          percent: total ? Math.round((received / total) * 1000) / 10 : 0
-        });
+  await new Promise((resolve, reject) => {
+    const req = lib.get(url, {
+      headers: { 'User-Agent': 'AmethystLauncher/0.1 (+https://github.com/MinLOL12/Amethyst)' }
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        // follow simple redirect once
+        res.resume();
+        downloadFile(res.headers.location, destination, options).then(resolve).catch(reject);
+        return;
       }
-      controller.enqueue(chunk);
-    }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`Failed to download ${label}: HTTP ${res.statusCode}`));
+      }
+
+      const fileStream = fs.createWriteStream(temp);
+
+      const counter = new Transform({
+        transform(chunk, encoding, callback) {
+          received += chunk.length;
+          const now = Date.now();
+          if (now - lastEmit > 120 || (total > 0 && received >= total)) {
+            lastEmit = now;
+            progressBus.emitEvent('download-progress', {
+              label,
+              destination,
+              received,
+              total,
+              percent: total ? Math.round((received / total) * 1000) / 10 : 0
+            });
+          }
+          callback(null, chunk);
+        }
+      });
+
+      pipeline(res, counter, fileStream)
+        .then(async () => {
+          try {
+            if (sha1) {
+              const actual = await hashFile(temp, 'sha1');
+              if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
+                await fsp.rm(temp, { force: true });
+                throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
+              }
+            }
+            await fsp.rename(temp, destination);
+            progressBus.emitEvent('download-complete', { label, destination, received, total });
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        })
+        .catch(reject);
+    });
+
+    req.on('error', reject);
+    req.setTimeout(30000, () => {
+      req.destroy(new Error('Download timeout'));
+    });
   });
 
-  await pipeline(response.body.pipeThrough(counter), writable);
-
-  if (sha1) {
-    const actual = await hashFile(temp, 'sha1');
-    if (actual.toLowerCase() !== String(sha1).toLowerCase()) {
-      await fsp.rm(temp, { force: true });
-      throw new Error(`Checksum mismatch for ${label}; expected ${sha1}, got ${actual}`);
-    }
-  }
-
-  await fsp.rename(temp, destination);
-  progressBus.emitEvent('download-complete', { label, destination, received, total });
   return { destination, skipped: false };
 }
 
