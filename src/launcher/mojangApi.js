@@ -17,7 +17,17 @@ async function getVersionManifest(force = false) {
     progressBus.emitEvent('status', {
       message: `Primary manifest failed (${error.message}). Trying fallback mirror...`
     });
-    manifestCache = await fetchJson(FALLBACK_MANIFEST_URL, 'fallback Minecraft version manifest');
+    try {
+      manifestCache = await fetchJson(FALLBACK_MANIFEST_URL, 'fallback Minecraft version manifest');
+    } catch (fallbackError) {
+      progressBus.emitEvent('status', {
+        message: `Fallback manifest also failed (${fallbackError.message}). Using cached manifest if available.`
+      });
+      if (manifestCache) {
+        return manifestCache;
+      }
+      throw new Error(`Failed to fetch Minecraft version manifest: ${error.message}`);
+    }
   }
   manifestFetchedAt = Date.now();
   return manifestCache;
