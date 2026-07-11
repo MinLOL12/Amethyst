@@ -4,10 +4,14 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { progressBus } = require('./launcher/downloader');
 const { listVersions } = require('./launcher/mojangApi');
-const { scanJavaInstallations } = require('./launcher/javaLocator');
-const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettings } = require('./launcher/accounts');
-const { installVersion, launchVersion } = require('./launcher/minecraft');
+const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettings, setActiveAccount } = require('./launcher/accounts');
+const { listAllJava, listDownloadableJava, downloadJava } = require('./launcher/javaManager');
+const { installVersion, launchVersion, checkVersionInstalled } = require('./launcher/minecraft');
 const { listModLoaders, getInstalledLoaders } = require('./launcher/modloader');
+const { LOADERS, listLoaderVersions } = require('./launcher/modLoaders');
+const { startDeviceLogin, getLoginStatus, cancelLogin, refreshMicrosoftAccount, switchAccount } = require('./launcher/microsoftAuth');
+const { downloadQueue } = require('./launcher/downloadQueue');
+const { getInstance } = require('./launcher/instances');
 const { getNews } = require('./launcher/news');
 const { listDrives } = require('./launcher/drives');
 const {
@@ -290,22 +294,29 @@ async function handleApi(request, response, url) {
   if (method === 'POST' && url.pathname === '/api/launch') {
     const body = await readBody(request);
     if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
+
     const accounts = await listAccounts();
-    const accountId = body.accountId || (await readSettings()).lastAccountId || accounts[0]?.id;
-    if (!accountId) throw new Error('Create or sign in to an account before launching.');
+    const settings = await readSettings();
+    const accountId = body.accountId || settings.lastAccountId || accounts[0]?.id;
+    const account = accounts.find((item) => item.id === accountId) || accounts[0];
+    if (!account) throw new Error('Create or sign in to an account before launching.');
+
+    const instance = body.instanceId ? await getInstance(body.instanceId) : null;
+    const requestedVersionId = body.versionId || instance?.playVersionId || instance?.versionId;
+    if (!requestedVersionId) throw new Error('versionId could not be resolved');
 
     // Check if already installed - skip downloads if so
     if (!body.skipInstall) {
-      const check = await checkVersionInstalled(body.versionId || (await getInstance(body.instanceId)).playVersionId, body);
+      const check = await checkVersionInstalled(requestedVersionId, body);
       if (check.installed) {
         body.skipInstall = true;
-        progressBus.emitEvent('status', { message: `${body.versionId} already installed — skipping downloads` });
+        progressBus.emitEvent('status', { message: `${requestedVersionId} already installed — skipping downloads` });
       }
     }
 
     const result = await runExclusive(
-      body.instanceId ? 'Launch instance' : `Launch ${body.versionId}`,
-      () => launchVersion(body.versionId, accountId, body)
+      body.instanceId ? 'Launch instance' : `Launch ${requestedVersionId}`,
+      () => launchVersion(requestedVersionId, account, body)
     );
     return json(response, 200, { ok: true, ...result });
   }

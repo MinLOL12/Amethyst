@@ -3,13 +3,13 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { APP_NAME, APP_VERSION, RESOURCES_BASE_URL } = require('../config');
 const { getVersionMeta, artifactPathFromName } = require('./mojangApi');
-const { downloadFile, fetchJson, mapLimit, progressBus } = require('./downloader');
+const { downloadFile, mapLimit, progressBus } = require('./downloader');
 const { ensureDir, writeJson, readJson } = require('./store');
 const { isAllowedByRules } = require('./rules');
 const { minecraftOsName, classpathSeparator } = require('./os');
-const { recommendedJavaMajor } = require('./javaLocator');
-const { resolveJavaForLaunch, autoDownloadIfMissing } = require('./javaManager');
+const { pickJava, recommendedJavaMajor } = require('./javaLocator');
 const { readSettings, saveSettings, touchAccount } = require('./accounts');
+const { getInstance, updateInstance } = require('./instances');
 const { installModLoader, modLoaderVersionId, resolveVersionChain } = require('./modloader');
 
 function gamePaths(gameDir, versionId) {
@@ -23,7 +23,13 @@ function gamePaths(gameDir, versionId) {
     assets: path.join(gameDir, 'assets'),
     assetIndexes: path.join(gameDir, 'assets', 'indexes'),
     assetObjects: path.join(gameDir, 'assets', 'objects'),
-    natives: path.join(gameDir, 'versions', versionId, 'natives')
+    natives: path.join(gameDir, 'versions', versionId, 'natives'),
+    mods: path.join(gameDir, 'mods'),
+    saves: path.join(gameDir, 'saves'),
+    screenshots: path.join(gameDir, 'screenshots'),
+    resourcepacks: path.join(gameDir, 'resourcepacks'),
+    logs: path.join(gameDir, 'logs'),
+    crashReports: path.join(gameDir, 'crash-reports')
   };
 }
 
@@ -200,6 +206,33 @@ async function downloadAssets(versionMeta, paths, concurrency) {
   });
 }
 
+async function pathExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function directoryHasFiles(target) {
+  try {
+    const entries = await fs.readdir(target);
+    return entries.length > 0;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function resolveVersionMeta(versionId, gameDir) {
+  const localPath = path.join(gameDir, 'versions', versionId, `${versionId}.json`);
+  const localMeta = await readJson(localPath, null);
+  if (localMeta) return localMeta;
+  return getVersionMeta(versionId);
+}
+
 /**
  * Install the vanilla (base) Minecraft version — downloads the client JAR,
  * libraries, natives, and assets.
@@ -216,21 +249,15 @@ async function installVersion(versionId, options = {}) {
 
     // Install mod loader profile if needed.
     if (instance.loader && instance.loader !== 'vanilla') {
-      const installed = await installLoader(instance.loader, instance.versionId, instance.loaderVersion, {
-        gameDir,
-        concurrency: options.concurrency || settings.maxConcurrentDownloads
-      });
-      resolvedVersionId = installed.versionId;
-      if (installed.versionId !== instance.playVersionId) {
-        await updateInstance(instance.id, { playVersionId: installed.versionId });
+      const installed = await installModLoader(instance.loader, instance.loaderVersion, instance.versionId, gameDir);
+      resolvedVersionId = installed.id || modLoaderVersionId(instance.loader, instance.loaderVersion, instance.versionId);
+      if (resolvedVersionId !== instance.playVersionId) {
+        await updateInstance(instance.id, { playVersionId: resolvedVersionId });
       }
     }
   } else if (options.loader && options.loader !== 'vanilla') {
-    const installed = await installLoader(options.loader, versionId, options.loaderVersion, {
-      gameDir,
-      concurrency: options.concurrency || settings.maxConcurrentDownloads
-    });
-    resolvedVersionId = installed.versionId;
+    const installed = await installModLoader(options.loader, options.loaderVersion, versionId, gameDir);
+    resolvedVersionId = installed.id || modLoaderVersionId(options.loader, options.loaderVersion, versionId);
   }
 
   const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
@@ -296,8 +323,8 @@ async function installVersion(versionId, options = {}) {
     await installModLoader(loaderType, loaderVersion, versionId, gameDir);
   }
 
-  progressBus.emitEvent('install-complete', { versionId, gameDir, loaderType, loaderVersion });
-  return { versionMeta, paths };
+  progressBus.emitEvent('install-complete', { versionId: resolvedVersionId, gameDir, loaderType, loaderVersion });
+  return { versionId: resolvedVersionId, versionMeta, paths: { ...paths, clientJar: clientJarPath } };
 }
 
 function addArgument(output, value, replacements) {
@@ -334,6 +361,87 @@ function legacySplitArguments(input) {
   let match;
   while ((match = regex.exec(input))) result.push(match[1] ?? match[2] ?? match[3]);
   return result;
+}
+
+function splitUserArgs(input) {
+  if (!input || !String(input).trim()) return [];
+  return legacySplitArguments(String(input));
+}
+
+async function checkVersionInstalled(versionId, options = {}) {
+  const settings = await readSettings();
+  const gameDir = options.gameDir || settings.gameDir;
+  const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
+  const paths = gamePaths(gameDir, versionId);
+  const missing = [];
+
+  if (!(await pathExists(paths.versionJson))) {
+    return {
+      installed: false,
+      versionId,
+      gameDir,
+      paths,
+      missing: [paths.versionJson],
+      missingCount: 1
+    };
+  }
+
+  let versionMeta;
+  try {
+    versionMeta = JSON.parse(await fs.readFile(paths.versionJson, 'utf8'));
+  } catch (error) {
+    return {
+      installed: false,
+      versionId,
+      gameDir,
+      paths,
+      missing: [paths.versionJson],
+      missingCount: 1,
+      error: `Invalid version metadata: ${error.message}`
+    };
+  }
+
+  const clientJarPath = versionMeta.inheritsFrom && !versionMeta.downloads?.client?.url
+    ? gamePaths(gameDir, versionMeta.inheritsFrom).clientJar
+    : paths.clientJar;
+  if (!(await pathExists(clientJarPath))) missing.push(clientJarPath);
+
+  const { downloads, natives } = getLibraryDownloads(versionMeta, paths);
+  await mapLimit(downloads, concurrency, async (download) => {
+    if (!(await pathExists(download.destination))) missing.push(download.destination);
+  });
+
+  if (versionMeta.assetIndex?.url) {
+    const assetIndexId = versionMeta.assetIndex.id || versionMeta.assets || 'legacy';
+    const assetIndexPath = path.join(paths.assetIndexes, `${assetIndexId}.json`);
+    if (!(await pathExists(assetIndexPath))) {
+      missing.push(assetIndexPath);
+    } else {
+      try {
+        const assetIndex = JSON.parse(await fs.readFile(assetIndexPath, 'utf8'));
+        const objects = Object.values(assetIndex.objects || {});
+        await mapLimit(objects, concurrency, async (object) => {
+          const hash = object.hash;
+          if (!hash) return;
+          const assetPath = path.join(paths.assetObjects, hash.slice(0, 2), hash);
+          if (!(await pathExists(assetPath))) missing.push(assetPath);
+        });
+      } catch (error) {
+        missing.push(assetIndexPath);
+      }
+    }
+  }
+
+  if (natives.length && !(await directoryHasFiles(paths.natives))) missing.push(paths.natives);
+
+  return {
+    installed: missing.length === 0,
+    versionId,
+    gameDir,
+    paths,
+    missing: missing.slice(0, 25),
+    missingCount: missing.length
+  };
 }
 
 /**
