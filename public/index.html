@@ -44,7 +44,7 @@
           <span class="status-dot" id="status-dot"></span>
           <span id="status-text">Disconnected</span>
         </div>
-        <span class="version-label">v<span id="app-version">0.1.0</span></span>
+        <span class="version-label">v<span id="app-version">0.2.0</span></span>
       </div>
     </aside>
 
@@ -72,8 +72,8 @@
         <div class="card hero-card">
           <div>
             <span class="eyebrow">💎 Welcome to Amethyst</span>
-            <h2>Launch official vanilla Minecraft</h2>
-            <p>A dark purple Minecraft vanilla launcher. Amethyst downloads Mojang's official version manifest, libraries, assets, and client jars at launch time. It does not bundle Minecraft code.</p>
+            <h2>Launch Minecraft with mods</h2>
+            <p>A dark purple Minecraft launcher with full mod loader support. Install Fabric, Quilt, or Forge and launch with your mods — Amethyst handles the rest. All game files are downloaded from official servers.</p>
           </div>
           <div class="actions">
             <button id="home-browse" class="primary">Browse Versions</button>
@@ -90,6 +90,19 @@
           <div class="card-divider"></div>
           <div class="quicklaunch-row">
             <select id="ql-version" class="ql-select" aria-label="Select version"></select>
+          </div>
+          <div class="quicklaunch-row">
+            <select id="ql-loader-type" class="ql-select" aria-label="Mod loader type">
+              <option value="">Vanilla (no mod loader)</option>
+              <option value="fabric">Fabric</option>
+              <option value="quilt">Quilt</option>
+              <option value="forge">Forge</option>
+            </select>
+          </div>
+          <div class="quicklaunch-row" id="ql-loader-version-row" style="display:none">
+            <select id="ql-loader-version" class="ql-select" aria-label="Mod loader version"></select>
+          </div>
+          <div class="quicklaunch-row">
             <button id="ql-launch" class="primary" disabled>Launch</button>
           </div>
           <div class="quicklaunch-row">
@@ -149,6 +162,28 @@
               </div>
               <span class="detail-date" id="detail-date">—</span>
               <div class="card-divider"></div>
+
+              <!-- Mod Loader Selection -->
+              <div class="detail-loader-section">
+                <div class="info-row">
+                  <span class="info-label">Mod Loader</span>
+                  <span class="info-value">
+                    <select id="detail-loader-type" class="loader-select">
+                      <option value="">Vanilla (no mod loader)</option>
+                      <option value="fabric">Fabric</option>
+                      <option value="quilt">Quilt</option>
+                      <option value="forge">Forge</option>
+                    </select>
+                  </span>
+                </div>
+                <div class="info-row loader-version-row" id="detail-loader-version-row" style="display:none">
+                  <span class="info-label">Loader Version</span>
+                  <span class="info-value">
+                    <select id="detail-loader-version" class="loader-select"></select>
+                  </span>
+                </div>
+              </div>
+
               <div class="detail-actions">
                 <button id="detail-install" class="primary">▶ Install &amp; Play</button>
               </div>
@@ -156,6 +191,7 @@
                 <div class="info-row"><span class="info-label">Game Directory</span><span class="info-value" id="detail-dir">—</span></div>
                 <div class="info-row"><span class="info-label">Version ID</span><span class="info-value" id="detail-ver">—</span></div>
                 <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="detail-type">—</span></div>
+                <div class="info-row"><span class="info-label">Mod Loader</span><span class="info-value" id="detail-loader-label">Vanilla</span></div>
               </div>
               <div class="card-divider"></div>
               <div class="detail-memory">
@@ -263,6 +299,37 @@
             </div>
           </div>
 
+          <!-- Mod Loader Settings -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <span class="card-icon">🧩</span>
+              <h2>Default Mod Loader</h2>
+            </div>
+            <div class="card-divider"></div>
+            <div class="info-banner" style="margin-bottom:16px">
+              <span class="info-banner-icon">💡</span>
+              <div>
+                <strong>Why do I need a mod loader?</strong>
+                <p>Minecraft doesn't load mods by itself. A mod loader like Fabric or Forge acts as a bridge between the game and your mods. Place your mods in the <code>mods/</code> folder inside your game directory.</p>
+              </div>
+            </div>
+            <div class="settings-field">
+              <label class="field-label">Mod Loader Type</label>
+              <select id="settings-loader-type">
+                <option value="">Vanilla (no mod loader)</option>
+                <option value="fabric">Fabric</option>
+                <option value="quilt">Quilt</option>
+                <option value="forge">Forge</option>
+              </select>
+            </div>
+            <div class="settings-field" id="settings-loader-version-field" style="display:none">
+              <label class="field-label">Mod Loader Version</label>
+              <select id="settings-loader-version">
+                <option value="">Select version...</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Data Settings -->
           <div class="card settings-card">
             <div class="card-header">
@@ -287,10 +354,10 @@
             <div class="about-content">
               <div class="about-title-row">
                 <span class="about-name">Amethyst</span>
-                <span class="about-version">v<span id="about-version">0.1.0</span></span>
+                <span class="about-version">v<span id="about-version">0.2.0</span></span>
               </div>
-              <p>A dark purple Minecraft vanilla launcher built with Node.js</p>
-              <p class="muted">Amethyst does not include or redistribute Minecraft code. All game files are downloaded from official Mojang/Microsoft servers.</p>
+              <p>A dark purple Minecraft launcher with mod loader support, built with Node.js</p>
+              <p class="muted">Amethyst does not include or redistribute Minecraft code. All game files are downloaded from official Mojang/Microsoft servers. Mod loader files are downloaded from their respective official sources.</p>
               <div class="card-divider"></div>
               <div class="about-status-row">
                 <span>Backend:</span>

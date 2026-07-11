@@ -7,6 +7,7 @@ const { listVersions } = require('./launcher/mojangApi');
 const { scanJavaInstallations } = require('./launcher/javaLocator');
 const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettings } = require('./launcher/accounts');
 const { installVersion, launchVersion } = require('./launcher/minecraft');
+const { listModLoaders, getInstalledLoaders } = require('./launcher/modloader');
 const { getNews } = require('./launcher/news');
 const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 
@@ -141,6 +142,26 @@ async function handleApi(request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/news') {
     return json(response, 200, { entries: await getNews() });
   }
+
+  // ── Mod Loader Endpoints ────────────────────────────────────────
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders') {
+    const mcVersion = url.searchParams.get('mcVersion') || '';
+    if (!mcVersion) return json(response, 400, { error: 'mcVersion query parameter is required' });
+    const loaders = await listModLoaders(mcVersion);
+    return json(response, 200, { mcVersion, loaders });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders/installed') {
+    const settings = await readSettings();
+    const mcVersion = url.searchParams.get('mcVersion') || settings.lastVersion || '';
+    const gameDir = settings.gameDir;
+    if (!mcVersion) return json(response, 200, { installed: { fabric: null, quilt: null, forge: null } });
+    const installed = await getInstalledLoaders(mcVersion, gameDir);
+    return json(response, 200, { mcVersion, installed });
+  }
+
+  // ── Install & Launch ────────────────────────────────────────────
 
   if (request.method === 'POST' && url.pathname === '/api/install') {
     const body = await readBody(request);

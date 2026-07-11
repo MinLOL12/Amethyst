@@ -95,7 +95,8 @@ async function readSettings() {
 
 async function saveSettings(partial) {
   const defaults = getDefaultSettings();
-  const next = { ...defaults, ...partial };
+  const current = await readJson(paths().settings, defaults);
+  const next = { ...defaults, ...current, ...partial };
   next.memoryMb = Math.min(16384, Math.max(512, Number(next.memoryMb) || defaults.memoryMb));
   next.maxConcurrentDownloads = Math.min(16, Math.max(1, Number(next.maxConcurrentDownloads) || defaults.maxConcurrentDownloads));
   await writeJson(paths().settings, next);

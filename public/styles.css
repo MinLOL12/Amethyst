@@ -1203,6 +1203,70 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* ===== Mod Loader UI ===== */
+.loader-select {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.loader-select:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.loader-select option {
+  background: var(--card);
+  color: var(--text);
+}
+
+.detail-loader-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.loader-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#ql-loader-version-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#ql-loader-version-row .ql-select {
+  flex: 1;
+}
+
+#settings-loader-version-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#settings-loader-version-field select {
+  width: 100%;
+}
+
+.info-banner code {
+  background: rgba(155,89,182,0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
   width: 6px;
