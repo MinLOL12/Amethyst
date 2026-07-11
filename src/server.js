@@ -51,6 +51,11 @@ const {
 const { openFolder, listFolderShortcuts, resolveFolder } = require('./launcher/folders');
 const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 
+// Modpack system (additional)
+const modpacks = require('./launcher/modpacks');
+const modrinth = require('./launcher/modrinth');
+const curseforge = require('./launcher/curseforge');
+
 const publicDir = path.join(__dirname, '..', 'public');
 const clients = new Set();
 let busyTask = null;
@@ -169,7 +174,8 @@ async function handleApi(request, response, url) {
       version: APP_VERSION,
       dataRoot: getDataRoot(),
       busyTask,
-      loaders: LOADERS
+      loaders: LOADERS,
+      curseforgeEnabled: !!curseforge.getApiKey()
     });
   }
 
@@ -468,6 +474,111 @@ async function handleApi(request, response, url) {
       instanceId: url.searchParams.get('instanceId') || undefined,
       gameDir: url.searchParams.get('gameDir') || undefined
     }));
+  }
+
+  // ── Modpacks (mod pack creator) ───────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/modpacks') {
+    return json(response, 200, { modpacks: await modpacks.listModpacks() });
+  }
+  if (method === 'POST' && url.pathname === '/api/modpacks') {
+    const body = await readBody(request);
+    return json(response, 201, { modpack: await modpacks.createModpack(body) });
+  }
+
+  const modpackOne = matchRoute(url.pathname, '/api/modpacks/:id');
+  if (modpackOne) {
+    if (method === 'GET') return json(response, 200, { modpack: await modpacks.getModpack(modpackOne.id) });
+    if (method === 'DELETE') { await modpacks.deleteModpack(modpackOne.id); return json(response, 200, { ok: true }); }
+    if (method === 'PATCH' || method === 'POST') { const body = await readBody(request); return json(response, 200, { modpack: await modpacks.updateModpack(modpackOne.id, body) }); }
+  }
+
+  const modpackInstall = matchRoute(url.pathname, '/api/modpacks/:id/install');
+  if (method === 'POST' && modpackInstall) {
+    const body = await readBody(request).catch(() => ({}));
+    const result = await runExclusive(`Install modpack ${modpackInstall.id}`, () => modpacks.installModpack(modpackInstall.id, body));
+    return json(response, 200, { ok: true, ...result });
+  }
+
+  const modpackLaunch = matchRoute(url.pathname, '/api/modpacks/:id/launch');
+  if (method === 'POST' && modpackLaunch) {
+    const body = await readBody(request);
+    const result = await runExclusive(`Launch modpack ${modpackLaunch.id}`, () => modpacks.launchModpack(modpackLaunch.id, body.accountId || body.account, body));
+    return json(response, 200, { ok: true, ...result });
+  }
+
+  const modpackMods = matchRoute(url.pathname, '/api/modpacks/:id/mods');
+  if (modpackMods) {
+    if (method === 'GET') return json(response, 200, { mods: await modpacks.listMods(modpackMods.id) });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      if (!body.fileUrl || !body.fileName) throw new Error('fileUrl and fileName required');
+      const entry = await runExclusive(`Install mod ${body.fileName}`, () => modpacks.addModToPack(modpackMods.id, body));
+      return json(response, 201, { mod: entry });
+    }
+  }
+
+  const modpackModDel = matchRoute(url.pathname, '/api/modpacks/:packId/mods/:modId');
+  if (method === 'DELETE' && modpackModDel) {
+    const remaining = await modpacks.removeModFromPack(modpackModDel.packId, modpackModDel.modId);
+    return json(response, 200, { mods: remaining });
+  }
+
+  // ── Modloaders alias (fabric/forge/neoforge/quilt) ────────────
+  const modloaderVersionsAlt = matchRoute(url.pathname, '/api/modloaders/:loader/versions');
+  if (method === 'GET' && modloaderVersionsAlt) {
+    const loader = modloaderVersionsAlt.loader;
+    const mcVersion = url.searchParams.get('mcVersion') || url.searchParams.get('minecraftVersion') || url.searchParams.get('gameVersion');
+    // Reuse existing loader listing
+    return json(response, 200, await listLoaderVersions(loader, mcVersion || undefined));
+  }
+
+  // ── Modrinth ──────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/modrinth/search') {
+    const query = url.searchParams.get('q') || url.searchParams.get('query') || '';
+    const loader = url.searchParams.get('loader') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const limit = Number(url.searchParams.get('limit') || 20);
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const projectType = url.searchParams.get('projectType') || 'mod';
+    const loaders = loader ? [loader] : [];
+    const gameVersions = gameVersion ? [gameVersion] : [];
+    const data = await modrinth.searchProjects({ query, loaders, gameVersions, projectType, limit, offset });
+    return json(response, 200, data);
+  }
+
+  const mrProj = matchRoute(url.pathname, '/api/modrinth/project/:id');
+  if (method === 'GET' && mrProj && !url.pathname.endsWith('/versions')) {
+    return json(response, 200, await modrinth.getProject(mrProj.id));
+  }
+
+  const mrVers = matchRoute(url.pathname, '/api/modrinth/project/:projectId/versions');
+  if (method === 'GET' && mrVers) {
+    const loader = url.searchParams.get('loader') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    return json(response, 200, { versions: await modrinth.getProjectVersions(mrVers.projectId, { loaders: loader ? [loader] : [], gameVersions: gameVersion ? [gameVersion] : [] }) });
+  }
+
+  // ── CurseForge ────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/curseforge/search') {
+    const searchFilter = url.searchParams.get('q') || url.searchParams.get('searchFilter') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const modLoaderType = url.searchParams.get('loader') || '';
+    const pageSize = Number(url.searchParams.get('limit') || 20);
+    const index = Number(url.searchParams.get('offset') || 0);
+    const data = await curseforge.searchMods({ searchFilter, gameVersion, modLoaderType, pageSize, index });
+    return json(response, 200, data);
+  }
+
+  const cfFiles = matchRoute(url.pathname, '/api/curseforge/mod/:id/files');
+  if (method === 'GET' && cfFiles) {
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const modLoaderType = url.searchParams.get('loader') || '';
+    return json(response, 200, await curseforge.getModFiles(cfFiles.id, { gameVersion, modLoaderType }));
+  }
+
+  const cfMod = matchRoute(url.pathname, '/api/curseforge/mod/:id');
+  if (method === 'GET' && cfMod) {
+    return json(response, 200, await curseforge.getMod(cfMod.id));
   }
 
   json(response, 404, { error: 'Not found' });
