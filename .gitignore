@@ -9,6 +9,14 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Node package manager output (no dependencies required for MVP)
+# Node package manager output
 node_modules/
 npm-debug.log*
+
+# Python cache from the Qt installer
+__pycache__/
+*.pyc
+
+# Qt UI build artifacts and downloaded Qt
+qt-ui/build/
+qt-ui/.qt/
