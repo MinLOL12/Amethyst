@@ -801,7 +801,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     java: java.path,
     requiredMajor,
     commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...`
-  };
+  });
   appendLog({
     stream: 'info',
     message: `Spawn: ${command.executable} (cwd=${command.cwd})`,
