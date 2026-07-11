@@ -68,8 +68,8 @@ Rectangle {
                     spacing: 16
                     
                     Repeater {
-                        model: launcher.newsModel
-                        
+                        model: newsModel
+
                         NewsItem {
                             title: modelData.title || "Minecraft News"
                             body: modelData.body || ""
@@ -77,17 +77,17 @@ Rectangle {
                             link: modelData.link || ""
                         }
                     }
-                    
+
                     Text {
                         text: "No news available. Connect to the internet to see latest updates."
                         color: textSecondary
                         font.pixelSize: 12
-                        visible: launcher.newsModel.count === 0
+                        visible: newsModel.count === 0
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
                 }
             }
-            
+
             // Quick launch section
             Card {
                 title: "Quick Launch"
@@ -165,7 +165,20 @@ Rectangle {
     
     // News model placeholder
     property ListModel newsModel: ListModel {}
-    
+
+    function loadNews(news) {
+        newsModel.clear()
+        for (var i = 0; i < news.length; i++) {
+            var item = news[i]
+            newsModel.append({
+                title: item.title || "Minecraft News",
+                body: item.excerpt || "",
+                date: item.date || "",
+                link: item.url || ""
+            })
+        }
+    }
+
     // News item component
     component NewsItem: Rectangle {
         property string title: ""

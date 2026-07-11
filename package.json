@@ -4,6 +4,9 @@
   "description": "Amethyst - a dark purple Minecraft launcher with Microsoft login, instances, and mod loaders (Node.js).",
   "main": "src/main.js",
   "type": "commonjs",
+  "bin": {
+    "amethyst": "src/main.js"
+  },
   "scripts": {
     "start": "node src/main.js",
     "dev": "AMETHYST_DEV=1 node src/main.js",
@@ -25,5 +28,68 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.amethyst.launcher",
+    "productName": "Amethyst Launcher",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "maximum",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Amethyst-Launcher-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Amethyst Launcher",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon-header.ico",
+      "license": "LICENSE",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "menuCategory": "Games"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.games",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Game",
+      "icon": "build/icon.png"
+    },
+    "portable": {
+      "artifactName": "Amethyst-Launcher-${version}-portable.${ext}"
+    }
   }
 }

@@ -81,12 +81,26 @@ qt-ui\build.bat --run    # Windows
 npm run qt:run           # cross-platform helper
 ```
 
+For manual build instructions, see `qt-ui/README.md`.
+
 ### 3. Tauri UI (`tauri-ui/`)
 ```bash
 cd tauri-ui
 npm install
 npm run tauri dev
 ```
+
+## Features
+
+- Pure CLI — no HTML, no web JavaScript, no browser, no frontend.
+- Offline-mode accounts.
+- Local storage in `~/.amethyst` (or `AMETHYST_HOME`).
+- Auto-detects Java (JAVA_HOME, PATH, common locations).
+- Downloads + verifies official vanilla versions (client, libraries, natives, assets).
+- Robust downloader using native Node.js `http`/`https` streams (fixes previous freezes/hangs during install).
+- Interactive menu or direct CLI commands.
+- Memory control and Java override.
+- Optional web server mode (`--server`) only if you really want the old browser UI.
 
 ## Requirements
 
@@ -135,7 +149,42 @@ You must own Minecraft Java Edition on the Microsoft account. Offline accounts r
 npm test
 ```
 
-## File structure
+Then open the printed URL in a browser.
+
+## How to install a version (CLI)
+
+```bash
+node src/main.js install 1.20.6
+# or with version from interactive menu
+```
+
+Progress and logs are printed directly in the terminal. Downloads are reliable and no longer freeze.
+
+## File structure (key files)
+
+```text
+Amethyst/
+├── src/
+│   ├── main.js          # Entry point (CLI by default)
+│   ├── cli.js           # Pure terminal UI + commands
+│   ├── launcher/
+│   │   ├── downloader.js   # Robust Node http downloads (no web streams)
+│   │   ├── minecraft.js
+│   │   └── ...
+├── package.json         # Zero runtime deps
+└── ...
+```
+
+## Development / checks (optional)
+
+```bash
+node --check src/main.js
+npm test   # if you have npm
+```
+
+This project uses **zero npm dependencies** at runtime. Everything is built-in Node.js modules.
+
+## File structure (simplified for CLI)
 
 ```text
 Amethyst/
