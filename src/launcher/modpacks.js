@@ -122,6 +122,32 @@ async function fetchForgePromotions(){
   try{ const data=await fetchJson(url,'Forge promotions'); return data.promos||{}; }catch{ return {}; }
 }
 async function fetchForgeVersions(mcVersion){
+  // Try Maven metadata first — it is more complete and reliable than the
+  // promotions endpoint, which has been known to lag or omit recent releases.
+  try {
+    const { FORGE_MAVEN_URL } = require('../config');
+    const metaUrl = `${FORGE_MAVEN_URL}/net/minecraftforge/forge/maven-metadata.xml`;
+    const response = await fetch(metaUrl, {
+      headers: { 'User-Agent': 'AmethystLauncher/0.2' }
+    });
+    if (response.ok) {
+      const xml = await response.text();
+      const mavenVersions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)]
+        .map(m => m[1])
+        .filter(v => v.startsWith(`${mcVersion}-`))
+        .reverse();
+      if (mavenVersions.length) {
+        return mavenVersions.map(version => ({
+          mcVersion,
+          type: 'release',
+          forgeVersion: version.slice(mcVersion.length + 1),
+          id: version
+        }));
+      }
+    }
+  } catch (_) { /* fall through to promotions */ }
+
+  // Fallback: the classic promotions endpoint.
   const promos=await fetchForgePromotions();
   const versions=[];
   for(const [key,ver] of Object.entries(promos)){
@@ -235,13 +261,14 @@ async function installModpack(id, options={}){
       }
     }
 
+    const { FORGE_MAVEN_URL, NEOFORGE_MAVEN_URL } = require('../config');
     let installerUrl, fileName;
     if(loader==='forge'){
       fileName=`forge-${mcVersion}-${forgeVer}-installer.jar`;
-      installerUrl=`https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVer}/${fileName}`;
+      installerUrl=`${FORGE_MAVEN_URL}/net/minecraftforge/forge/${mcVersion}-${forgeVer}/${fileName}`;
     }else{
       fileName=`neoforge-${forgeVer}-installer.jar`;
-      installerUrl=`https://maven.neoforged.net/releases/net/neoforged/neoforge/${forgeVer}/${fileName}`;
+      installerUrl=`${NEOFORGE_MAVEN_URL}/net/neoforged/neoforge/${forgeVer}/${fileName}`;
     }
     const installerPath=path.join(modpackDir(id), fileName);
     await downloadFile(installerUrl, installerPath, { label:`${loader} installer ${forgeVer}` });
