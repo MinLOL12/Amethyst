@@ -157,14 +157,9 @@ async function listForgeVersions(gameVersion) {
     // Also maven metadata lists all versions.
     const metaUrl = `${FORGE_MAVEN_URL}/net/minecraftforge/forge/maven-metadata.xml`;
     const response = await fetch(metaUrl, {
-      headers: { 'User-Agent': 'AmethystLauncher/0.2' },
-      redirect: 'follow'
+      headers: { 'User-Agent': 'AmethystLauncher/0.2' }
     });
-    if (!response.ok) {
-      const error = new Error(`Forge metadata HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
+    if (!response.ok) throw new Error(`Forge metadata HTTP ${response.status}`);
     const xml = await response.text();
     const versions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)]
       .map((m) => m[1])
@@ -181,7 +176,6 @@ async function listForgeVersions(gameVersion) {
       }))
     };
   } catch (error) {
-    progressBus.emitEvent('status', { message: `Failed to fetch Forge versions for ${gameVersion}: ${error.message}` });
     return { loader: 'forge', gameVersion, versions: [], error: error.message };
   }
 }
@@ -191,14 +185,9 @@ async function listNeoForgeVersions(gameVersion) {
     // NeoForge versioning: for 1.20.2+ versions look like 20.2.x derived from MC version.
     const metaUrl = `${NEOFORGE_MAVEN_URL}/net/neoforged/neoforge/maven-metadata.xml`;
     const response = await fetch(metaUrl, {
-      headers: { 'User-Agent': 'AmethystLauncher/0.2' },
-      redirect: 'follow'
+      headers: { 'User-Agent': 'AmethystLauncher/0.2' }
     });
-    if (!response.ok) {
-      const error = new Error(`NeoForge metadata HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
+    if (!response.ok) throw new Error(`NeoForge metadata HTTP ${response.status}`);
     const xml = await response.text();
     const all = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((m) => m[1]);
 
@@ -230,7 +219,6 @@ async function listNeoForgeVersions(gameVersion) {
       }))
     };
   } catch (error) {
-    progressBus.emitEvent('status', { message: `Failed to fetch NeoForge versions for ${gameVersion}: ${error.message}` });
     return { loader: 'neoforge', gameVersion, versions: [], error: error.message };
   }
 }

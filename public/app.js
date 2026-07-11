@@ -28,10 +28,6 @@ const state = {
   loaderVersions: {},
   loaderRequestId: 0,
   gameRunning: false,
-  onlineWasOnline: false,
-  pendingRefresh: false,
-  lastFetchError: null,
-  retryCount: 0
 };
 
 const pageLabels = {
@@ -66,58 +62,14 @@ function notify(message, level = 'success') {
 }
 
 async function api(path, options = {}) {
-  try {
-    const response = await fetch(path, {
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...options,
-      body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
-    });
-    
-    // Handle network errors and failed responses
-    if (!response.ok) {
-      let errorMsg = `HTTP ${response.status}`;
-      try {
-        const data = await response.json().catch(() => ({}));
-        errorMsg = data.error || data.message || errorMsg;
-        if (data.hint) errorMsg += ` - ${data.hint}`;
-        if (data.type === 'NETWORK_ERROR') {
-          errorMsg = 'Network error: ' + errorMsg;
-        } else if (data.type === 'TIMEOUT_ERROR') {
-          errorMsg = 'Request timed out: ' + errorMsg;
-        } else if (data.type === 'PARSE_ERROR') {
-          errorMsg = 'Data parse error: ' + errorMsg;
-        }
-      } catch (_) {
-        // Couldn't parse error response, use status
-      }
-      
-      const error = new Error(errorMsg);
-      error.status = response.status;
-      throw error;
-    }
-    
-    const data = await response.json().catch(() => ({}));
-    return data;
-  } catch (error) {
-    // Handle fetch errors (network issues, CORS, etc.)
-    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      const enhancedError = new Error('Network error: Failed to connect to the server. Check if the backend is running and your internet connection is active.');
-      enhancedError.status = 0;
-      enhancedError.type = 'NETWORK_ERROR';
-      throw enhancedError;
-    }
-    
-    // Handle timeout errors
-    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
-      const enhancedError = new Error('Request timed out. Please check your connection and try again.');
-      enhancedError.status = error.status || 0;
-      enhancedError.type = 'TIMEOUT_ERROR';
-      throw enhancedError;
-    }
-    
-    // Re-throw the original error
-    throw error;
-  }
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+    body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
 }
 
 function setProgress(percent, text) {
@@ -1164,22 +1116,6 @@ function setOnline(online) {
   $('#status-text').textContent = online ? 'Connected' : 'Disconnected';
   $('#about-backend-status').textContent = online ? 'Running locally' : 'Disconnected';
   $('#topbar-status').textContent = online ? 'Ready' : 'Backend unavailable';
-  
-  // If backend comes back online, refresh critical data
-  if (online && !state.onlineWasOnline) {
-    state.onlineWasOnline = true;
-    // Don't auto-refresh immediately to avoid spamming, but mark that we should try
-    if (state.pendingRefresh) {
-      state.pendingRefresh = false;
-      // Refresh versions and accounts after reconnection
-      loadVersions().catch(() => {});
-      loadAccounts().catch(() => {});
-      loadStatus().catch(() => {});
-    }
-  } else if (!online) {
-    state.onlineWasOnline = false;
-    state.pendingRefresh = true;
-  }
 }
 
 function showModal(title, versionId) {
@@ -1217,63 +1153,23 @@ function updateModal(status, text, complete = false, error = false) {
 }
 
 function reportError(error) {
-  let message = error?.message || String(error);
-  let type = 'error';
-  
-  // Enhance error messages for common cases
-  if (error?.type === 'NETWORK_ERROR' || message.includes('Failed to fetch') || message.includes('Network error')) {
-    message = 'Network error: Unable to connect to the server. Please check if the backend is running and your internet connection is active.';
-  } else if (error?.type === 'TIMEOUT_ERROR' || message.includes('timeout') || message.includes('timed out')) {
-    message = 'Request timed out. Please check your internet connection and try again.';
-  } else if (error?.status === 404) {
-    message = 'Resource not found: ' + message;
-  } else if (error?.status === 401) {
-    message = 'Authentication required: ' + message;
-  } else if (error?.status === 429) {
-    message = 'Rate limited: Too many requests. Please wait and try again.';
-  } else if (error?.status >= 500) {
-    message = 'Server error: ' + message + ' (The server may be temporarily unavailable)';
-  } else if (message.includes('ECONNREFUSED') || message.includes('Connection refused')) {
-    message = 'Connection refused: The backend server is not running or not accessible.';
-  } else if (message.includes('ECONNRESET') || message.includes('Connection reset')) {
-    message = 'Connection reset: Network instability detected. Please try again.';
-  } else if (message.includes('ENOTFOUND') || message.includes('DNS')) {
-    message = 'DNS resolution failed: Unable to resolve the server address. Check your internet connection.';
-  } else if (message.includes('SSL') || message.includes('TLS') || message.includes('certificate')) {
-    message = 'SSL/TLS error: Security certificate issue. This might be a temporary network problem.';
-  }
-  
+  const message = error?.message || String(error);
   setBusy(false, 'Error');
   log(message, 'error');
-  notify(message, type);
+  notify(message, 'error');
 }
 
 // Live backend events
 function connectEvents() {
-  let source = null;
-  let reconnectTimer = null;
-  
-  function setupEventSource() {
-    if (source) {
-      source.close();
-    }
-    
-    try {
-      source = new EventSource('/api/events');
-      
-      source.onopen = () => {
-        state.retryCount = 0;
-        log('Event stream connected.');
-      };
-      
-      source.onmessage = async (message) => {
-        let event;
-        try { event = JSON.parse(message.data); } catch { return; }
-        switch (event.type) {
-          case 'hello':
-            log(`${event.app} event stream connected.`);
-            setOnline(true);
-            break;
+  const source = new EventSource('/api/events');
+  source.onmessage = async (message) => {
+    let event;
+    try { event = JSON.parse(message.data); } catch { return; }
+    switch (event.type) {
+      case 'hello':
+        log(`${event.app} event stream connected.`);
+        setOnline(true);
+        break;
       case 'task-start':
       case 'queue-start':
         setBusy(true, event.name);
@@ -1354,36 +1250,7 @@ function connectEvents() {
       default: break;
     }
   };
-  
-      source.onerror = () => {
-        setOnline(false);
-        // Try to reconnect
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts++;
-          const delay = RECONNECT_DELAY_MS * reconnectAttempts;
-          log(`Event stream disconnected. Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'error');
-          reconnectTimer = setTimeout(setupEventSource, delay);
-        } else {
-          log('Event stream reconnection attempts exhausted.', 'error');
-        }
-      };
-    } catch (error) {
-      setOnline(false);
-      log(`Failed to create EventSource: ${error.message}`, 'error');
-      // Try to reconnect
-      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        reconnectAttempts++;
-        const delay = RECONNECT_DELAY_MS * reconnectAttempts;
-        reconnectTimer = setTimeout(setupEventSource, delay);
-      }
-    }
-  }
-  
-  // Start the connection
-  const MAX_RECONNECT_ATTEMPTS = 10;
-  const RECONNECT_DELAY_MS = 3000;
-  let reconnectAttempts = 0;
-  setupEventSource();
+  source.onerror = () => setOnline(false);
 }
 
 function selectedPayload() {
