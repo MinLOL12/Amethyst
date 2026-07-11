@@ -4,14 +4,45 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { progressBus } = require('./launcher/downloader');
 const { listVersions } = require('./launcher/mojangApi');
-const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettings, setActiveAccount } = require('./launcher/accounts');
-const { listAllJava, listDownloadableJava, downloadJava } = require('./launcher/javaManager');
-const { installVersion, launchVersion, checkVersionInstalled } = require('./launcher/minecraft');
-const { listModLoaders, getInstalledLoaders } = require('./launcher/modloader');
-const { LOADERS, listLoaderVersions } = require('./launcher/modLoaders');
-const { startDeviceLogin, getLoginStatus, cancelLogin, refreshMicrosoftAccount, switchAccount } = require('./launcher/microsoftAuth');
+const {
+  listAccounts,
+  addOfflineAccount,
+  removeAccount,
+  readSettings,
+  saveSettings,
+  setActiveAccount
+} = require('./launcher/accounts');
+const {
+  startDeviceLogin,
+  getLoginStatus,
+  cancelLogin,
+  refreshMicrosoftAccount,
+  switchAccount
+} = require('./launcher/microsoftAuth');
+const {
+  listInstances,
+  getInstance,
+  createInstance,
+  updateInstance,
+  renameInstance,
+  duplicateInstance,
+  deleteInstance,
+  getRecentInstances,
+  exportInstance,
+  importInstance
+} = require('./launcher/instances');
+const {
+  LOADERS,
+  listLoaderVersions,
+  findInstalledLoaderProfile
+} = require('./launcher/modLoaders');
+const {
+  listAllJava,
+  listDownloadableJava,
+  downloadJava
+} = require('./launcher/javaManager');
 const { downloadQueue } = require('./launcher/downloadQueue');
-const { getInstance } = require('./launcher/instances');
+const { installVersion, launchVersion, checkVersionInstalled } = require('./launcher/minecraft');
 const { getNews } = require('./launcher/news');
 const { listDrives } = require('./launcher/drives');
 const {
@@ -256,27 +287,140 @@ async function handleApi(request, response, url) {
     return json(response, 200, { entries: await getNews() });
   }
 
-  // ── Mod Loader Endpoints ────────────────────────────────────────
-
-  if (request.method === 'GET' && url.pathname === '/api/modloaders') {
-    const mcVersion = url.searchParams.get('mcVersion') || '';
-    if (!mcVersion) return json(response, 400, { error: 'mcVersion query parameter is required' });
-    const loaders = await listModLoaders(mcVersion);
-    return json(response, 200, { mcVersion, loaders });
+  // ── Instances ─────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/instances') {
+    return json(response, 200, { instances: await listInstances() });
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/modloaders/installed') {
+  if (method === 'GET' && url.pathname === '/api/instances/recent') {
+    const limit = Number(url.searchParams.get('limit')) || 6;
+    return json(response, 200, { instances: await getRecentInstances(limit) });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/instances') {
+    const body = await readBody(request);
+    return json(response, 201, { instance: await createInstance(body) });
+  }
+
+  const instanceOne = matchRoute(url.pathname, '/api/instances/:id');
+  if (method === 'GET' && instanceOne) {
+    return json(response, 200, { instance: await getInstance(instanceOne.id) });
+  }
+  if (method === 'PATCH' && instanceOne) {
+    const body = await readBody(request);
+    return json(response, 200, { instance: await updateInstance(instanceOne.id, body) });
+  }
+  if (method === 'DELETE' && instanceOne) {
+    const deleteFiles = url.searchParams.get('deleteFiles') !== 'false';
+    return json(response, 200, { instances: await deleteInstance(instanceOne.id, { deleteFiles }) });
+  }
+
+  const instanceRename = matchRoute(url.pathname, '/api/instances/:id/rename');
+  if (method === 'POST' && instanceRename) {
+    const body = await readBody(request);
+    return json(response, 200, { instance: await renameInstance(instanceRename.id, body.name) });
+  }
+
+  const instanceDuplicate = matchRoute(url.pathname, '/api/instances/:id/duplicate');
+  if (method === 'POST' && instanceDuplicate) {
+    const body = await readBody(request);
+    return json(response, 201, { instance: await duplicateInstance(instanceDuplicate.id, body.name) });
+  }
+
+  const instanceExport = matchRoute(url.pathname, '/api/instances/:id/export');
+  if (method === 'POST' && instanceExport) {
+    const body = await readBody(request);
+    const job = downloadQueue.enqueue({
+      name: `Export instance`,
+      type: 'export',
+      run: async () => exportInstance(instanceExport.id, body.destination)
+    });
+    return json(response, 202, { job });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/instances/import') {
+    const body = await readBody(request);
+    if (!body.path) throw new Error('path to ZIP is required');
+    const job = downloadQueue.enqueue({
+      name: `Import instance`,
+      type: 'import',
+      run: async () => importInstance(body.path, body)
+    });
+    return json(response, 202, { job });
+  }
+
+  // ── Mod loaders ───────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/loaders') {
+    return json(response, 200, { loaders: LOADERS });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/loaders/versions') {
+    const loader = url.searchParams.get('loader') || 'fabric';
+    const gameVersion = url.searchParams.get('gameVersion') || url.searchParams.get('version');
+    return json(response, 200, await listLoaderVersions(loader, gameVersion));
+  }
+
+  // Aggregate endpoint used by Quick Launch. Keep the per-loader endpoint
+  // above for clients that only need one list.
+  if (method === 'GET' && url.pathname === '/api/modloaders') {
+    const gameVersion = url.searchParams.get('mcVersion') || url.searchParams.get('gameVersion');
+    if (!gameVersion) return json(response, 400, { error: 'mcVersion query parameter is required' });
+    const entries = await Promise.all(
+      LOADERS.filter((loader) => loader !== 'vanilla').map(async (loader) => [
+        loader,
+        await listLoaderVersions(loader, gameVersion)
+      ])
+    );
+    return json(response, 200, {
+      mcVersion: gameVersion,
+      loaders: Object.fromEntries(entries.map(([loader, result]) => [loader, result.versions || []]))
+    });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/modloaders/installed') {
     const settings = await readSettings();
-    const mcVersion = url.searchParams.get('mcVersion') || settings.lastVersion || '';
-    const gameDir = settings.gameDir;
-    if (!mcVersion) return json(response, 200, { installed: { fabric: null, quilt: null, forge: null } });
-    const installed = await getInstalledLoaders(mcVersion, gameDir);
-    return json(response, 200, { mcVersion, installed });
+    const gameVersion = url.searchParams.get('mcVersion') || settings.lastVersion || '';
+    const gameDir = url.searchParams.get('gameDir') || settings.gameDir;
+    const installed = { fabric: null, forge: null, neoforge: null, quilt: null };
+    if (gameVersion) {
+      for (const loader of Object.keys(installed)) {
+        const versionId = await findInstalledLoaderProfile(loader, gameVersion, '', gameDir);
+        installed[loader] = versionId ? { versionId } : null;
+      }
+    }
+    return json(response, 200, { mcVersion: gameVersion, installed });
   }
 
-  // ── Install & Launch ────────────────────────────────────────────
+  if (method === 'POST' && url.pathname === '/api/loaders/install') {
+    const body = await readBody(request);
+    if (!body.gameVersion) throw new Error('gameVersion is required');
+    const job = downloadQueue.enqueue({
+      name: `Install ${body.loader} ${body.loaderVersion || ''} for ${body.gameVersion}`,
+      type: 'loader',
+      run: async () => installVersion(body.gameVersion, {
+        ...body,
+        loaderType: body.loader,
+        loaderVersion: body.loaderVersion
+      })
+    });
+    return json(response, 202, { job });
+  }
 
-  if (request.method === 'POST' && url.pathname === '/api/install') {
+  // ── Drives ────────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/drives') {
+    return json(response, 200, { drives: await listDrives() });
+  }
+
+  // ── Check Installed ────────────────────────────────────────────
+  if (method === 'POST' && url.pathname === '/api/check-installed') {
+    const body = await readBody(request);
+    if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
+    const result = await checkVersionInstalled(body.versionId, body);
+    return json(response, 200, result);
+  }
+
+  // ── Install / Launch ──────────────────────────────────────────
+  if (method === 'POST' && url.pathname === '/api/install') {
     const body = await readBody(request);
     if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
     const name = body.instanceId ? `Install instance` : `Install ${body.versionId}`;
@@ -294,29 +438,24 @@ async function handleApi(request, response, url) {
   if (method === 'POST' && url.pathname === '/api/launch') {
     const body = await readBody(request);
     if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
-
     const accounts = await listAccounts();
-    const settings = await readSettings();
-    const accountId = body.accountId || settings.lastAccountId || accounts[0]?.id;
-    const account = accounts.find((item) => item.id === accountId) || accounts[0];
-    if (!account) throw new Error('Create or sign in to an account before launching.');
-
-    const instance = body.instanceId ? await getInstance(body.instanceId) : null;
-    const requestedVersionId = body.versionId || instance?.playVersionId || instance?.versionId;
-    if (!requestedVersionId) throw new Error('versionId could not be resolved');
+    const accountId = body.accountId || (await readSettings()).lastAccountId || accounts[0]?.id;
+    if (!accountId) throw new Error('Create or sign in to an account before launching.');
 
     // Check if already installed - skip downloads if so
     if (!body.skipInstall) {
-      const check = await checkVersionInstalled(requestedVersionId, body);
+      const check = await checkVersionInstalled(body.versionId, body);
       if (check.installed) {
         body.skipInstall = true;
-        progressBus.emitEvent('status', { message: `${requestedVersionId} already installed — skipping downloads` });
+        progressBus.emitEvent('status', {
+          message: `${check.versionId} already installed — skipping downloads`
+        });
       }
     }
 
     const result = await runExclusive(
-      body.instanceId ? 'Launch instance' : `Launch ${requestedVersionId}`,
-      () => launchVersion(requestedVersionId, account, body)
+      body.instanceId ? 'Launch instance' : `Launch ${body.versionId}`,
+      () => launchVersion(body.versionId, accountId, body)
     );
     return json(response, 200, { ok: true, ...result });
   }

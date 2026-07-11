@@ -53,8 +53,13 @@ function getDefaultSettings() {
     launchArgs: '',
     lastVersion: '',
     lastAccountId: '',
+    lastInstanceId: '',
     maxConcurrentDownloads: 8,
-    loaderType: '',
+    rememberMicrosoftLogin: true,
+    // Quick Launch uses these to remember the selected runtime. Vanilla is
+    // represented explicitly so an old settings file cannot accidentally
+    // reuse a stale loader version.
+    loaderType: 'vanilla',
     loaderVersion: ''
   };
 }

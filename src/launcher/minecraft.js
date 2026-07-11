@@ -7,31 +7,19 @@ const { downloadFile, mapLimit, progressBus } = require('./downloader');
 const { ensureDir, writeJson, readJson } = require('./store');
 const { isAllowedByRules } = require('./rules');
 const { minecraftOsName, classpathSeparator } = require('./os');
-const { pickJava, recommendedJavaMajor } = require('./javaLocator');
+const { recommendedJavaMajor } = require('./javaLocator');
+const { resolveJavaForLaunch, autoDownloadIfMissing } = require('./javaManager');
 const { readSettings, saveSettings, touchAccount } = require('./accounts');
-const { getInstance, updateInstance } = require('./instances');
-const { installModLoader, modLoaderVersionId, resolveVersionChain } = require('./modloader');
-
-function gamePaths(gameDir, versionId) {
-  return {
-    root: gameDir,
-    versions: path.join(gameDir, 'versions'),
-    versionDir: path.join(gameDir, 'versions', versionId),
-    versionJson: path.join(gameDir, 'versions', versionId, `${versionId}.json`),
-    clientJar: path.join(gameDir, 'versions', versionId, `${versionId}.jar`),
-    libraries: path.join(gameDir, 'libraries'),
-    assets: path.join(gameDir, 'assets'),
-    assetIndexes: path.join(gameDir, 'assets', 'indexes'),
-    assetObjects: path.join(gameDir, 'assets', 'objects'),
-    natives: path.join(gameDir, 'versions', versionId, 'natives'),
-    mods: path.join(gameDir, 'mods'),
-    saves: path.join(gameDir, 'saves'),
-    screenshots: path.join(gameDir, 'screenshots'),
-    resourcepacks: path.join(gameDir, 'resourcepacks'),
-    logs: path.join(gameDir, 'logs'),
-    crashReports: path.join(gameDir, 'crash-reports')
-  };
-}
+const { ensureValidAccount } = require('./microsoftAuth');
+const { gamePaths } = require('./minecraftPaths');
+const {
+  installLoader,
+  normalizeLoader,
+  loaderVersionId,
+  findInstalledLoaderProfile
+} = require('./modLoaders');
+const { getInstance, touchPlayed, updateInstance } = require('./instances');
+const { appendLog } = require('./logs');
 
 function currentRuleEnv() {
   return { name: minecraftOsName(), arch: process.arch === 'ia32' ? 'x86' : process.arch };
@@ -117,7 +105,6 @@ async function extractNativeJar(nativeJar, destination) {
   const zlib = require('node:zlib');
   const buf = await fs.readFile(nativeJar);
 
-  // --- Locate End-of-Central-Directory record (EOCD) ---
   let eocdOffset = -1;
   for (let i = buf.length - 22; i >= 0; i--) {
     if (buf[i] === 0x50 && buf[i + 1] === 0x4b && buf[i + 2] === 0x05 && buf[i + 3] === 0x06) {
@@ -206,125 +193,317 @@ async function downloadAssets(versionMeta, paths, concurrency) {
   });
 }
 
-async function pathExists(target) {
-  try {
-    await fs.access(target);
-    return true;
-  } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    throw error;
+/**
+ * Merge an inherited loader profile over its vanilla parent. Loader libraries
+ * are placed first on the classpath and override parent libraries with the same
+ * Maven coordinate. Most importantly, the child's mainClass survives: that is
+ * the entry point that scans the mods directory.
+ */
+function mergeVersionMeta(parent, child) {
+  const childLibraryNames = new Set((child.libraries || []).map((library) => library?.name).filter(Boolean));
+  const parentLibraries = (parent.libraries || []).filter((library) => !childLibraryNames.has(library?.name));
+  const merged = {
+    ...parent,
+    ...child,
+    libraries: [...(child.libraries || []), ...parentLibraries],
+    downloads: { ...(parent.downloads || {}), ...(child.downloads || {}) },
+    assetIndex: child.assetIndex || parent.assetIndex,
+    assets: child.assets || parent.assets,
+    mainClass: child.mainClass || parent.mainClass,
+    minecraftArguments: child.minecraftArguments || parent.minecraftArguments,
+    javaVersion: child.javaVersion || parent.javaVersion
+  };
+
+  if (parent.arguments || child.arguments) {
+    merged.arguments = {
+      game: [...(child.arguments?.game || []), ...(parent.arguments?.game || [])],
+      jvm: [...(child.arguments?.jvm || []), ...(parent.arguments?.jvm || [])]
+    };
   }
+  return merged;
 }
 
-async function directoryHasFiles(target) {
-  try {
-    const entries = await fs.readdir(target);
-    return entries.length > 0;
-  } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    throw error;
+/** Resolve metadata plus the actual vanilla client JAR used by a loader. */
+async function resolveVersionDetails(versionId, gameDir) {
+  const visited = new Set();
+  const chain = [];
+  let currentId = versionId;
+
+  while (currentId) {
+    if (visited.has(currentId)) throw new Error(`Circular Minecraft version inheritance at ${currentId}`);
+    visited.add(currentId);
+
+    const localPath = path.join(gameDir, 'versions', currentId, `${currentId}.json`);
+    let meta = await readJson(localPath, null);
+    if (!meta) {
+      meta = await getVersionMeta(currentId);
+      await writeJson(localPath, meta);
+    }
+    chain.push({ id: currentId, meta });
+    currentId = meta.inheritsFrom || null;
   }
+
+  if (!chain.length) throw new Error(`Unable to resolve version metadata for ${versionId}`);
+  let versionMeta = { ...chain.at(-1).meta };
+  for (let index = chain.length - 2; index >= 0; index -= 1) {
+    versionMeta = mergeVersionMeta(versionMeta, chain[index].meta);
+  }
+  versionMeta.id = versionId;
+
+  const requestedJarId = chain[0].meta.jar;
+  const clientEntry = (requestedJarId && chain.find((entry) => entry.id === requestedJarId))
+    || chain.find((entry) => entry.meta.downloads?.client?.url);
+  const clientVersionId = clientEntry?.id || requestedJarId || versionId;
+  const clientDownload = clientEntry?.meta.downloads?.client || versionMeta.downloads?.client || null;
+
+  return { versionMeta, chain, clientVersionId, clientDownload };
 }
 
 async function resolveVersionMeta(versionId, gameDir) {
-  const localPath = path.join(gameDir, 'versions', versionId, `${versionId}.json`);
-  const localMeta = await readJson(localPath, null);
-  if (localMeta) return localMeta;
-  return getVersionMeta(versionId);
+  return (await resolveVersionDetails(versionId, gameDir)).versionMeta;
 }
 
-/**
- * Install the vanilla (base) Minecraft version — downloads the client JAR,
- * libraries, natives, and assets.
- */
+function loaderSelection(options, settings, instance = null) {
+  if (instance) {
+    return {
+      loader: normalizeLoader(instance.loader || 'vanilla'),
+      loaderVersion: String(instance.loaderVersion || '')
+    };
+  }
+  const explicitLoader = options.loaderType !== undefined ? options.loaderType : options.loader;
+  const selected = explicitLoader !== undefined ? explicitLoader : settings.loaderType;
+  return {
+    loader: normalizeLoader(selected || 'vanilla'),
+    loaderVersion: String(options.loaderVersion !== undefined ? options.loaderVersion : settings.loaderVersion || '')
+  };
+}
+
+async function installedLoaderTarget(loader, gameVersion, loaderVersion, gameDir) {
+  if (loader === 'vanilla') return gameVersion;
+  return findInstalledLoaderProfile(loader, gameVersion, loaderVersion, gameDir);
+}
+
+async function checkVersionInstalled(versionId, options = {}) {
+  const settings = await readSettings();
+  let gameDir = options.gameDir || settings.gameDir;
+  let baseVersionId = versionId;
+  let instance = null;
+
+  if (options.instanceId) {
+    instance = await getInstance(options.instanceId);
+    gameDir = instance.gameDir;
+    baseVersionId = instance.versionId || versionId;
+  }
+
+  const selection = loaderSelection(options, settings, instance);
+  let resolvedVersionId = baseVersionId;
+  if (selection.loader !== 'vanilla') {
+    resolvedVersionId = await installedLoaderTarget(
+      selection.loader,
+      baseVersionId,
+      selection.loaderVersion,
+      gameDir
+    );
+    // A vanilla install is never an installed Fabric/Forge/Quilt runtime. This
+    // prevents the download-skipping optimization from silently launching
+    // vanilla and ignoring every jar in mods/.
+    if (!resolvedVersionId) {
+      return {
+        installed: false,
+        versionId: selection.loaderVersion
+          ? loaderVersionId(selection.loader, baseVersionId, selection.loaderVersion)
+          : baseVersionId,
+        baseVersionId,
+        gameDir,
+        loader: selection.loader,
+        loaderVersion: selection.loaderVersion,
+        missing: [path.join(gameDir, 'versions', loaderVersionId(selection.loader, baseVersionId, selection.loaderVersion))],
+        missingCount: 1,
+        reason: 'mod-loader-profile-missing'
+      };
+    }
+  }
+
+  const paths = gamePaths(gameDir, resolvedVersionId);
+  const missing = [];
+  try {
+    await fs.access(paths.versionJson);
+    const details = await resolveVersionDetails(resolvedVersionId, gameDir);
+    const effectivePaths = {
+      ...paths,
+      clientJar: gamePaths(gameDir, details.clientVersionId).clientJar
+    };
+    try { await fs.access(effectivePaths.clientJar); } catch (_) { missing.push(effectivePaths.clientJar); }
+
+    const { downloads, natives } = getLibraryDownloads(details.versionMeta, effectivePaths);
+    for (const download of downloads) {
+      try { await fs.access(download.destination); } catch (_) { missing.push(download.destination); }
+    }
+
+    const assetIndexId = details.versionMeta.assetIndex?.id || details.versionMeta.assets || 'legacy';
+    const assetIndexPath = path.join(effectivePaths.assetIndexes, `${assetIndexId}.json`);
+    let assetIndexExists = false;
+    try {
+      const assetIndex = JSON.parse(await fs.readFile(assetIndexPath, 'utf8'));
+      assetIndexExists = true;
+      for (const object of Object.values(assetIndex.objects || {})) {
+        if (!object?.hash) continue;
+        const assetPath = path.join(effectivePaths.assetObjects, object.hash.slice(0, 2), object.hash);
+        try { await fs.access(assetPath); } catch (_) { missing.push(assetPath); }
+      }
+    } catch (_) {
+      missing.push(assetIndexPath);
+    }
+
+    if (natives.length) {
+      try {
+        if (!(await fs.readdir(effectivePaths.natives)).length) missing.push(effectivePaths.natives);
+      } catch (_) {
+        missing.push(effectivePaths.natives);
+      }
+    }
+
+    return {
+      installed: missing.length === 0,
+      versionId: resolvedVersionId,
+      baseVersionId,
+      gameDir,
+      paths: effectivePaths,
+      versionMeta: details.versionMeta,
+      loader: selection.loader,
+      loaderVersion: selection.loaderVersion,
+      missing: missing.slice(0, 25),
+      missingCount: missing.length,
+      missingLibraries: downloads.filter((download) => missing.includes(download.destination)).length,
+      totalLibraries: downloads.length,
+      assetIndexExists
+    };
+  } catch (error) {
+    if (error.code === 'ENOENT') missing.push(paths.versionJson);
+    return {
+      installed: false,
+      versionId: resolvedVersionId,
+      baseVersionId,
+      gameDir,
+      paths,
+      loader: selection.loader,
+      loaderVersion: selection.loaderVersion,
+      missing: missing.slice(0, 25),
+      missingCount: Math.max(1, missing.length),
+      reason: error.code === 'ENOENT' ? 'required-file-missing' : error.message
+    };
+  }
+}
+
 async function installVersion(versionId, options = {}) {
   const settings = await readSettings();
   let gameDir = options.gameDir || settings.gameDir;
-  let resolvedVersionId = versionId;
+  let instance = null;
+  let baseVersionId = versionId;
 
   if (options.instanceId) {
-    const instance = await getInstance(options.instanceId);
+    instance = await getInstance(options.instanceId);
     gameDir = instance.gameDir;
-    resolvedVersionId = instance.versionId || versionId;
-
-    // Install mod loader profile if needed.
-    if (instance.loader && instance.loader !== 'vanilla') {
-      const installed = await installModLoader(instance.loader, instance.loaderVersion, instance.versionId, gameDir);
-      resolvedVersionId = installed.id || modLoaderVersionId(instance.loader, instance.loaderVersion, instance.versionId);
-      if (resolvedVersionId !== instance.playVersionId) {
-        await updateInstance(instance.id, { playVersionId: resolvedVersionId });
-      }
-    }
-  } else if (options.loader && options.loader !== 'vanilla') {
-    const installed = await installModLoader(options.loader, options.loaderVersion, versionId, gameDir);
-    resolvedVersionId = installed.id || modLoaderVersionId(options.loader, options.loaderVersion, versionId);
+    baseVersionId = instance.versionId || versionId;
   }
 
+  const selection = loaderSelection(options, settings, instance);
   const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
-  const paths = gamePaths(gameDir, resolvedVersionId);
+  progressBus.emitEvent('install-start', {
+    versionId: baseVersionId,
+    gameDir,
+    loader: selection.loader,
+    loaderVersion: selection.loaderVersion
+  });
 
-  progressBus.emitEvent('install-start', { versionId: resolvedVersionId, gameDir });
-  await ensureDir(paths.versionDir);
-  await ensureDir(paths.libraries);
-  await ensureDir(paths.assetObjects);
-  await ensureDir(paths.natives);
-  await ensureDir(paths.mods);
-  await ensureDir(paths.saves);
-  await ensureDir(paths.screenshots);
-  await ensureDir(paths.resourcepacks);
-  await ensureDir(paths.logs);
-  await ensureDir(paths.crashReports);
+  async function installRuntime(targetVersionId) {
+    const paths = gamePaths(gameDir, targetVersionId);
+    await Promise.all([
+      ensureDir(paths.versionDir),
+      ensureDir(paths.libraries),
+      ensureDir(paths.assetObjects),
+      ensureDir(paths.natives),
+      ensureDir(paths.mods),
+      ensureDir(paths.saves),
+      ensureDir(paths.screenshots),
+      ensureDir(paths.resourcepacks),
+      ensureDir(paths.logs),
+      ensureDir(paths.crashReports)
+    ]);
 
-  const versionMeta = await resolveVersionMeta(resolvedVersionId, gameDir);
-  await writeJson(paths.versionJson, versionMeta);
-
-  // Client jar: use this version's download, or fall back to inheritsFrom vanilla jar.
-  let clientJarPath = paths.clientJar;
-  if (versionMeta.downloads?.client?.url) {
-    await downloadFile(versionMeta.downloads.client.url, paths.clientJar, {
-      sha1: versionMeta.downloads.client.sha1,
-      size: versionMeta.downloads.client.size,
-      label: `Minecraft ${resolvedVersionId} client`
-    });
-  } else if (versionMeta.inheritsFrom) {
-    const parentPaths = gamePaths(gameDir, versionMeta.inheritsFrom);
-    const parentMeta = await resolveVersionMeta(versionMeta.inheritsFrom, gameDir);
-    if (parentMeta.downloads?.client?.url) {
-      await downloadFile(parentMeta.downloads.client.url, parentPaths.clientJar, {
-        sha1: parentMeta.downloads.client.sha1,
-        size: parentMeta.downloads.client.size,
-        label: `Minecraft ${versionMeta.inheritsFrom} client`
-      });
-      clientJarPath = parentPaths.clientJar;
+    const details = await resolveVersionDetails(targetVersionId, gameDir);
+    if (!details.clientDownload?.url) {
+      throw new Error(`Minecraft ${targetVersionId} does not expose a downloadable client jar.`);
     }
-  } else {
-    throw new Error(`Minecraft ${resolvedVersionId} does not expose a downloadable client jar.`);
+    const clientPaths = gamePaths(gameDir, details.clientVersionId);
+    await downloadFile(details.clientDownload.url, clientPaths.clientJar, {
+      sha1: details.clientDownload.sha1,
+      size: details.clientDownload.size,
+      label: `Minecraft ${details.clientVersionId} client`
+    });
+
+    const effectivePaths = { ...paths, clientJar: clientPaths.clientJar };
+    const { downloads, natives } = getLibraryDownloads(details.versionMeta, effectivePaths);
+    progressBus.emitEvent('status', { message: `Downloading ${downloads.length} libraries` });
+    await mapLimit(downloads, concurrency, (download) => downloadFile(download.url, download.destination, download));
+
+    if (natives.length) {
+      progressBus.emitEvent('status', { message: `Extracting ${natives.length} native libraries` });
+      await fs.rm(paths.natives, { recursive: true, force: true });
+      await ensureDir(paths.natives);
+      for (const item of natives) await extractNativeJar(item.jar, paths.natives);
+    }
+
+    await downloadAssets(details.versionMeta, effectivePaths, concurrency);
+    return { versionMeta: details.versionMeta, paths: effectivePaths, versionId: targetVersionId };
   }
 
-  const { downloads, natives } = getLibraryDownloads(versionMeta, paths);
-  progressBus.emitEvent('status', { message: `Downloading ${downloads.length} libraries` });
-  await mapLimit(downloads, concurrency, (download) => downloadFile(download.url, download.destination, download));
+  let resolvedVersionId = baseVersionId;
+  let resolvedLoaderVersion = selection.loaderVersion;
 
-  if (natives.length) {
-    progressBus.emitEvent('status', { message: `Extracting ${natives.length} native libraries` });
-    await fs.rm(paths.natives, { recursive: true, force: true });
-    await ensureDir(paths.natives);
-    for (const item of natives) await extractNativeJar(item.jar, paths.natives);
+  if (selection.loader !== 'vanilla') {
+    // Forge processors require a complete vanilla installation. Installing the
+    // parent first is harmless for Fabric/Quilt and makes every loader follow
+    // the same reliable path.
+    await installRuntime(baseVersionId);
+    const installed = await installLoader(
+      selection.loader,
+      baseVersionId,
+      selection.loaderVersion,
+      {
+        ...options,
+        gameDir,
+        javaPath: options.javaPath || instance?.javaPath || settings.javaPath,
+        concurrency
+      }
+    );
+    resolvedVersionId = installed.versionId;
+    resolvedLoaderVersion = installed.loaderVersion || resolvedLoaderVersion;
+    if (instance && (
+      installed.versionId !== instance.playVersionId ||
+      resolvedLoaderVersion !== instance.loaderVersion
+    )) {
+      await updateInstance(instance.id, {
+        playVersionId: installed.versionId,
+        loaderVersion: resolvedLoaderVersion
+      });
+    }
   }
 
-  await downloadAssets(versionMeta, paths, concurrency);
-  
-  // If a mod loader is specified, install it on top of the vanilla version
-  const loaderType = options.loaderType || settings.loaderType || '';
-  const loaderVersion = options.loaderVersion || settings.loaderVersion || '';
-
-  if (loaderType && loaderVersion) {
-    progressBus.emitEvent('status', { message: `Installing ${loaderType} ${loaderVersion} for ${versionId}` });
-    await installModLoader(loaderType, loaderVersion, versionId, gameDir);
-  }
-
-  progressBus.emitEvent('install-complete', { versionId: resolvedVersionId, gameDir, loaderType, loaderVersion });
-  return { versionId: resolvedVersionId, versionMeta, paths: { ...paths, clientJar: clientJarPath } };
+  const result = await installRuntime(resolvedVersionId);
+  progressBus.emitEvent('install-complete', {
+    versionId: resolvedVersionId,
+    baseVersionId,
+    gameDir,
+    loader: selection.loader,
+    loaderVersion: resolvedLoaderVersion
+  });
+  return {
+    ...result,
+    baseVersionId,
+    loader: selection.loader,
+    loaderVersion: resolvedLoaderVersion
+  };
 }
 
 function addArgument(output, value, replacements) {
@@ -365,89 +544,9 @@ function legacySplitArguments(input) {
 
 function splitUserArgs(input) {
   if (!input || !String(input).trim()) return [];
-  return legacySplitArguments(String(input));
+  return legacySplitArguments(String(input).trim());
 }
 
-async function checkVersionInstalled(versionId, options = {}) {
-  const settings = await readSettings();
-  const gameDir = options.gameDir || settings.gameDir;
-  const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
-  const paths = gamePaths(gameDir, versionId);
-  const missing = [];
-
-  if (!(await pathExists(paths.versionJson))) {
-    return {
-      installed: false,
-      versionId,
-      gameDir,
-      paths,
-      missing: [paths.versionJson],
-      missingCount: 1
-    };
-  }
-
-  let versionMeta;
-  try {
-    versionMeta = JSON.parse(await fs.readFile(paths.versionJson, 'utf8'));
-  } catch (error) {
-    return {
-      installed: false,
-      versionId,
-      gameDir,
-      paths,
-      missing: [paths.versionJson],
-      missingCount: 1,
-      error: `Invalid version metadata: ${error.message}`
-    };
-  }
-
-  const clientJarPath = versionMeta.inheritsFrom && !versionMeta.downloads?.client?.url
-    ? gamePaths(gameDir, versionMeta.inheritsFrom).clientJar
-    : paths.clientJar;
-  if (!(await pathExists(clientJarPath))) missing.push(clientJarPath);
-
-  const { downloads, natives } = getLibraryDownloads(versionMeta, paths);
-  await mapLimit(downloads, concurrency, async (download) => {
-    if (!(await pathExists(download.destination))) missing.push(download.destination);
-  });
-
-  if (versionMeta.assetIndex?.url) {
-    const assetIndexId = versionMeta.assetIndex.id || versionMeta.assets || 'legacy';
-    const assetIndexPath = path.join(paths.assetIndexes, `${assetIndexId}.json`);
-    if (!(await pathExists(assetIndexPath))) {
-      missing.push(assetIndexPath);
-    } else {
-      try {
-        const assetIndex = JSON.parse(await fs.readFile(assetIndexPath, 'utf8'));
-        const objects = Object.values(assetIndex.objects || {});
-        await mapLimit(objects, concurrency, async (object) => {
-          const hash = object.hash;
-          if (!hash) return;
-          const assetPath = path.join(paths.assetObjects, hash.slice(0, 2), hash);
-          if (!(await pathExists(assetPath))) missing.push(assetPath);
-        });
-      } catch (error) {
-        missing.push(assetIndexPath);
-      }
-    }
-  }
-
-  if (natives.length && !(await directoryHasFiles(paths.natives))) missing.push(paths.natives);
-
-  return {
-    installed: missing.length === 0,
-    versionId,
-    gameDir,
-    paths,
-    missing: missing.slice(0, 25),
-    missingCount: missing.length
-  };
-}
-
-/**
- * Build the JVM launch command for a given (possibly merged) version meta.
- * This works with both vanilla and mod-loader version JSONs.
- */
 function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPath) {
   const libraries = selectedLibraries(versionMeta)
     .map((library) => libraryArtifact(library))
@@ -535,115 +634,138 @@ function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPat
   };
 }
 
-/**
- * Resolve the effective (merged) version meta for a given version + optional mod loader.
- * If a mod loader is specified, the merged meta includes the mod loader's mainClass,
- * libraries, and arguments layered on top of the vanilla base.
- */
-async function resolveEffectiveMeta(versionId, loaderType, loaderVersion, gameDir) {
-  // Determine which version ID to actually launch
-  let launchVersionId = versionId;
-
-  if (loaderType && loaderVersion) {
-    launchVersionId = modLoaderVersionId(loaderType, loaderVersion, versionId);
-  }
-
-  // Resolve the full inheritance chain and merge
-  const mergedMeta = await resolveVersionChain(launchVersionId, gameDir);
-  return { mergedMeta, launchVersionId };
-}
-
-/**
- * Get the correct client JAR path for the effective version.
- * When using a mod loader, the client JAR is still the vanilla one (referenced
- * by the `jar` field in the mod-loader JSON, or falls back to the parent).
- */
-function effectiveClientJarPath(gameDir, versionId, mergedMeta) {
-  // The mod loader's version JSON may specify `jar` to indicate which version's
-  // client JAR to use. If not, fall back to the parent version.
-  const jarVersion = mergedMeta.jar || mergedMeta.inheritsFrom || versionId;
-  return path.join(gameDir, 'versions', jarVersion, `${jarVersion}.jar`);
-}
-
-/**
- * Launch a Minecraft version, optionally with a mod loader.
- *
- * The full flow:
- * 1. Install the vanilla (parent) version + assets
- * 2. If a mod loader is specified, install its profile
- * 3. Resolve the merged version meta (inheritsFrom chain)
- * 4. Ensure mod-loader libraries are downloaded
- * 5. Build the launch command with the merged meta
- * 6. Spawn the game process
- */
-async function launchVersion(versionId, account, options = {}) {
-  if (!account?.username || !account?.uuid) throw new Error('Choose or create an offline account before launching.');
-
+async function launchVersion(versionId, accountOrId, options = {}) {
   const settings = await readSettings();
-  const gameDir = options.gameDir || settings.gameDir;
-  const loaderType = options.loaderType || settings.loaderType || '';
-  const loaderVersion = options.loaderVersion || settings.loaderVersion || '';
+  let instance = null;
+  let gameDir = options.gameDir || settings.gameDir;
+  let baseVersionId = versionId;
 
-  // Step 1: Install the vanilla base version
-  const install = await installVersion(versionId, { ...options, loaderType, loaderVersion });
+  if (options.instanceId) {
+    instance = await getInstance(options.instanceId);
+    gameDir = instance.gameDir;
+    baseVersionId = instance.versionId || versionId;
+  }
+  const selection = loaderSelection(options, settings, instance);
 
-  // Step 2: Resolve the effective (merged) version meta
-  const { mergedMeta, launchVersionId } = await resolveEffectiveMeta(versionId, loaderType, loaderVersion, gameDir);
+  // Resolve account — accept raw offline object or id string.
+  let authAccount;
+  if (typeof accountOrId === 'string') {
+    authAccount = await ensureValidAccount(accountOrId);
+  } else if (accountOrId?.type === 'microsoft' || accountOrId?.mcToken) {
+    authAccount = await ensureValidAccount(accountOrId.id);
+  } else if (accountOrId?.username && accountOrId?.uuid) {
+    authAccount = {
+      id: accountOrId.id || accountOrId.uuid,
+      username: accountOrId.username,
+      uuid: accountOrId.uuid,
+      type: accountOrId.type || 'offline',
+      accessToken: accountOrId.accessToken || `offline-${accountOrId.uuid}`,
+      userType: accountOrId.type === 'microsoft' ? 'msa' : 'legacy',
+      xuid: accountOrId.xuid || ''
+    };
+  } else {
+    throw new Error('Choose an account before launching.');
+  }
 
-  // Step 3: Ensure all mod-loader libraries are downloaded
-  const effectivePaths = gamePaths(gameDir, launchVersionId);
-  await ensureDir(effectivePaths.versionDir);
-  await ensureDir(effectivePaths.natives);
-
-  // Download any libraries from the merged meta that aren't from the vanilla version
-  const vanillaLibNames = new Set((install.versionMeta.libraries || []).map((l) => l.name));
-  const modLoaderLibraries = (mergedMeta.libraries || []).filter((l) => !vanillaLibNames.has(l.name));
-  if (modLoaderLibraries.length) {
-    const modLoaderMeta = { ...mergedMeta, libraries: modLoaderLibraries };
-    const { downloads: mlDownloads, natives: mlNatives } = getLibraryDownloads(modLoaderMeta, effectivePaths);
-    const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
-
-    if (mlDownloads.length) {
-      progressBus.emitEvent('status', { message: `Downloading ${mlDownloads.length} mod-loader libraries` });
-      await mapLimit(mlDownloads, concurrency, (dl) => downloadFile(dl.url, dl.destination, dl));
+  let install;
+  if (options.skipInstall) {
+    let launchVersionId = baseVersionId;
+    if (selection.loader !== 'vanilla') {
+      launchVersionId = await installedLoaderTarget(
+        selection.loader,
+        baseVersionId,
+        selection.loaderVersion,
+        gameDir
+      );
     }
 
-    if (mlNatives.length) {
-      progressBus.emitEvent('status', { message: `Extracting ${mlNatives.length} mod-loader native libraries` });
-      for (const item of mlNatives) await extractNativeJar(item.jar, effectivePaths.natives);
+    if (launchVersionId) {
+      const details = await resolveVersionDetails(launchVersionId, gameDir);
+      const paths = {
+        ...gamePaths(gameDir, launchVersionId),
+        clientJar: gamePaths(gameDir, details.clientVersionId).clientJar
+      };
+      install = {
+        versionMeta: details.versionMeta,
+        paths,
+        versionId: launchVersionId,
+        baseVersionId,
+        loader: selection.loader,
+        loaderVersion: selection.loaderVersion
+      };
+      progressBus.emitEvent('status', {
+        message: `${launchVersionId} already installed — launching directly`
+      });
     }
   }
 
-  // Step 4: Use the vanilla client JAR (mod loaders reference the parent's jar)
-  const clientJar = effectiveClientJarPath(gameDir, versionId, mergedMeta);
+  // A caller may have requested skipInstall using a stale vanilla check. Never
+  // honor that optimization when the selected loader profile is absent.
+  if (!install) {
+    install = await installVersion(baseVersionId, {
+      ...options,
+      gameDir,
+      instanceId: options.instanceId,
+      loaderType: selection.loader,
+      loaderVersion: selection.loaderVersion
+    });
+  }
 
-  // Step 5: Build paths for the effective version and build the launch command
-  const launchPaths = {
-    ...effectivePaths,
-    clientJar
+  const launchSettings = {
+    memoryMb: options.memoryMb || instance?.memoryMb || settings.memoryMb,
+    javaPath: options.javaPath || instance?.javaPath || settings.javaPath,
+    jvmArgs: options.jvmArgs ?? instance?.jvmArgs ?? settings.jvmArgs,
+    launchArgs: options.launchArgs ?? instance?.launchArgs ?? settings.launchArgs,
+    resolutionWidth: options.resolutionWidth || instance?.resolutionWidth || settings.resolutionWidth,
+    resolutionHeight: options.resolutionHeight || instance?.resolutionHeight || settings.resolutionHeight,
+    fullscreen: options.fullscreen ?? instance?.fullscreen ?? settings.fullscreen
   };
 
-  const nextSettings = await saveSettings({ ...settings, ...options, lastVersion: versionId, lastAccountId: account.id || account.uuid, loaderType, loaderVersion });
-  const requiredMajor = recommendedJavaMajor(mergedMeta);
-  const java = await pickJava(requiredMajor, nextSettings.javaPath);
+  await saveSettings({
+    ...settings,
+    memoryMb: launchSettings.memoryMb,
+    // Keep the Mojang version in Quick Launch; a loader profile id is not an
+    // option in the version picker.
+    lastVersion: baseVersionId,
+    lastAccountId: authAccount.id,
+    lastInstanceId: instance?.id || settings.lastInstanceId,
+    loaderType: !instance && options.persistLoader !== false ? selection.loader : settings.loaderType,
+    loaderVersion: !instance && options.persistLoader !== false
+      ? (install.loaderVersion || selection.loaderVersion)
+      : settings.loaderVersion
+  });
+
+  const requiredMajor = recommendedJavaMajor(install.versionMeta);
+  let java = await resolveJavaForLaunch(requiredMajor, launchSettings.javaPath);
+  if (!java && options.autoDownloadJava !== false) {
+    java = await autoDownloadIfMissing(requiredMajor);
+  }
   if (!java) {
     throw new Error(
       `No compatible Java installation found. Minecraft ${install.versionId} recommends Java ${requiredMajor}+; install Java, download it from the Java Manager, or set a custom path.`
     );
   }
 
-  await touchAccount(account.id || account.uuid);
-  const command = buildLaunchCommand(mergedMeta, launchPaths, account, nextSettings, java.path);
+  await touchAccount(authAccount.id);
+  if (instance) await touchPlayed(instance.id);
 
-  const loaderLabel = loaderType ? ` with ${loaderType} ${loaderVersion}` : '';
+  const command = buildLaunchCommand(install.versionMeta, install.paths, authAccount, launchSettings, java.path);
   progressBus.emitEvent('launch-start', {
-    versionId,
-    loaderType,
-    loaderVersion,
+    versionId: install.versionId,
+    baseVersionId,
+    loader: selection.loader,
+    loaderType: selection.loader,
+    loaderVersion: install.loaderVersion || selection.loaderVersion,
+    mainClass: install.versionMeta.mainClass,
+    modsDir: install.paths.mods,
     java: java.path,
     requiredMajor,
-    mainClass: mergedMeta.mainClass,
     commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...`
+  });
+  appendLog({
+    stream: 'info',
+    message: `Spawn: ${command.executable} (cwd=${command.cwd})`,
+    source: 'launcher'
   });
 
   await ensureDir(command.cwd);
@@ -658,7 +780,15 @@ async function launchVersion(versionId, account, options = {}) {
   child.on('error', (error) => progressBus.emitEvent('launch-error', { versionId: install.versionId, message: error.message }));
   child.on('close', (code, signal) => progressBus.emitEvent('launch-exit', { versionId: install.versionId, code, signal }));
 
-  return { pid: child.pid, java, versionId, loaderType, loaderVersion };
+  return {
+    pid: child.pid,
+    java,
+    versionId: install.versionId,
+    baseVersionId,
+    loader: selection.loader,
+    loaderVersion: install.loaderVersion || selection.loaderVersion,
+    instanceId: instance?.id || null
+  };
 }
 
 module.exports = {
@@ -671,6 +801,7 @@ module.exports = {
   getLibraryDownloads,
   replacePlaceholders,
   legacySplitArguments,
-  resolveEffectiveMeta,
-  effectiveClientJarPath
+  mergeVersionMeta,
+  resolveVersionMeta,
+  resolveVersionDetails
 };

@@ -17,7 +17,7 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32" role="presentation"><path d="M16 2.5 28.5 9v14L16 30 3.5 23V9L16 2.5Z"/><path d="m9.5 12.5 6.5-3.5 6.5 3.5v7L16 23l-6.5-3.5v-7Z"/></svg>
         </span>
-        <span class="brand-copy"><strong>Amethyst</strong><small>VANILLA LAUNCHER</small></span>
+        <span class="brand-copy"><strong>Amethyst</strong><small>MODDED LAUNCHER</small></span>
       </a>
 
       <div class="sidebar-label">Workspace</div>
@@ -51,7 +51,7 @@
           <div><strong id="status-text">Connecting</strong><small>Local Node.js backend</small></div>
           <span class="connection-pulse" aria-hidden="true"></span>
         </div>
-        <span class="version-label">v<span id="app-version">0.2.0</span></span>
+        <div class="sidebar-meta"><span>AMETHYST</span><span>v<span id="app-version">0.1.0</span></span></div>
       </div>
     </aside>
 
@@ -68,61 +68,42 @@
       </header>
 
       <div class="page active" id="page-home">
-
-        <!-- Welcome card -->
-        <div class="card hero-card">
-          <div>
-            <span class="eyebrow">💎 Welcome to Amethyst</span>
-            <h2>Launch Minecraft with mods</h2>
-            <p>A dark purple Minecraft launcher with full mod loader support. Install Fabric, Quilt, or Forge and launch with your mods — Amethyst handles the rest. All game files are downloaded from official servers.</p>
+        <section class="hero-card">
+          <div class="hero-copy">
+            <div class="hero-kicker"><span class="kicker-dot"></span> A calmer way to play</div>
+            <h1>Make your next<br><em>world</em> unforgettable.</h1>
+            <p>Launch vanilla or modded Minecraft with Fabric, Forge, NeoForge, or Quilt. Choose the matching loader and Amethyst will start the runtime that discovers your mods.</p>
+            <div class="hero-actions">
+              <button id="home-browse" class="button primary"><span>Browse versions</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></button>
+              <button id="home-accounts" class="button button-subtle"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="2.2"/><path d="M3.5 13c.3-2 1.8-3.1 4.5-3.1s4.2 1.1 4.5 3.1"/></svg><span>Manage accounts</span></button>
+            </div>
           </div>
           <div class="hero-art" aria-hidden="true">
             <div class="hero-glow"></div><div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div>
             <div class="hero-crystal"><svg viewBox="0 0 120 120"><path d="M60 7 102 31v48l-42 24L18 79V31L60 7Z"/><path d="m60 7 16 40-16 56-16-56L60 7Z"/><path d="m18 31 42 16 42-16M44 47h32"/></svg></div>
-            <span class="art-label label-top">OFFICIAL</span><span class="art-label label-bottom">VANILLA / 01</span>
+            <span class="art-label label-top">MOD READY</span><span class="art-label label-bottom">LOADERS / 04</span>
           </div>
         </section>
 
-        <!-- Quick launch -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon">🚀</span>
-            <h2>Quick Launch</h2>
-          </div>
-          <div class="card-divider"></div>
-          <div class="quicklaunch-row">
-            <select id="ql-version" class="ql-select" aria-label="Select version"></select>
-          </div>
-          <div class="quicklaunch-row">
-            <select id="ql-loader-type" class="ql-select" aria-label="Mod loader type">
-              <option value="">Vanilla (no mod loader)</option>
-              <option value="fabric">Fabric</option>
-              <option value="quilt">Quilt</option>
-              <option value="forge">Forge</option>
-            </select>
-          </div>
-          <div class="quicklaunch-row" id="ql-loader-version-row" style="display:none">
-            <select id="ql-loader-version" class="ql-select" aria-label="Mod loader version"></select>
-          </div>
-          <div class="quicklaunch-row">
-            <button id="ql-launch" class="primary" disabled>Launch</button>
-          </div>
-          <div class="quicklaunch-row">
-            <label class="slider-label">
-              <span>Memory</span>
-              <strong><span id="ql-memory-value">2048</span> MB</strong>
-            </label>
-            <input id="ql-memory" type="range" min="512" max="16384" step="256" value="2048">
-          </div>
-        </div>
+        <section class="stat-strip" aria-label="Launcher status">
+          <div class="stat-item"><span class="stat-icon violet"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 6.5 3.7v8.6L10 18l-6.5-3.7V5.7L10 2Z"/><path d="m3.5 5.7 6.5 3.7 6.5-3.7M10 9.4V18"/></svg></span><div><strong id="versions-count">—</strong><small>versions available</small></div></div>
+          <div class="stat-item"><span class="stat-icon green"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6l7-3.5Z"/><path d="m6.5 10 2.2 2.2 4.8-5"/></svg></span><div><strong id="accounts-count">—</strong><small>player accounts</small></div></div>
+          <div class="stat-item"><span class="stat-icon amber"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a3 3 0 0 0-3 3v2h6v-2a3 3 0 0 0-3-3ZM5 8h10v8.5H5V8Z"/><path d="M8 12h4M10 10v4"/></svg></span><div><strong id="java-status">Scanning</strong><small>Java runtime</small></div></div>
+          <div class="stat-item stat-note"><span class="live-mark"></span><div><strong>Ready when you are</strong><small>local and private by default</small></div></div>
+        </section>
 
         <section class="card launch-card">
           <div class="section-heading"><div><span class="section-eyebrow">QUICK LAUNCH</span><h2>Back to your world</h2></div><span class="section-status"><span class="status-dot online"></span>Offline mode</span></div>
           <div class="launch-controls">
             <label class="select-wrap"><span>VERSION</span><select id="ql-version" aria-label="Select Minecraft version"></select></label>
+            <div class="loader-pickers">
+              <label class="select-wrap"><span>MOD LOADER</span><select id="ql-loader-type" aria-label="Select mod loader"><option value="vanilla">Vanilla</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select></label>
+              <label class="select-wrap loader-version-wrap" id="ql-loader-version-wrap" hidden><span>LOADER VERSION</span><select id="ql-loader-version" aria-label="Select mod loader version"><option value="">Latest compatible</option></select></label>
+            </div>
             <label class="range-wrap"><span class="range-heading"><span>MEMORY</span><strong><span id="ql-memory-value">2048</span> MB</strong></span><input id="ql-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Memory allocation"></label>
             <button id="ql-launch" class="button primary launch-button" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Launch game</span></button>
           </div>
+          <div class="loader-help"><span class="info-banner-icon">i</span><span>Jars in <code>mods/</code> are loaded only when Fabric, Forge, NeoForge, or Quilt is selected. The loader and every mod must support the selected Minecraft version.</span></div>
         </section>
 
         <section class="card news-card">
@@ -137,7 +118,7 @@
           <section class="card versions-list-panel"><div class="filter-tabs"><button class="filter-tab active" data-filter="all">All</button><button class="filter-tab" data-filter="release">Release</button><button class="filter-tab" data-filter="snapshot">Snapshot</button></div><div class="version-items" id="version-list"></div></section>
           <section class="card versions-detail-panel" id="version-detail">
             <div class="detail-empty" id="detail-empty"><div class="empty-glyph">◈</div><strong>Select a version</strong><p>Choose a release from your library<br>to see its launch details.</p></div>
-            <div class="detail-content" id="detail-content" style="display:none"><div class="detail-head"><div><span class="section-eyebrow">SELECTED VERSION</span><div class="detail-title-row"><span class="detail-id" id="detail-id">—</span><span class="detail-badge" id="detail-badge">release</span></div></div><span class="detail-cube">◈</span></div><span class="detail-date" id="detail-date">—</span><div class="detail-rule"></div><button id="detail-install" class="button primary detail-launch"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Install &amp; play</span></button><div class="detail-info"><div class="info-row"><span>GAME DIRECTORY</span><strong id="detail-dir">—</strong></div><div class="info-row"><span>VERSION ID</span><strong id="detail-ver">—</strong></div><div class="info-row"><span>RELEASE TYPE</span><strong id="detail-type">—</strong></div></div><div class="detail-rule"></div><div class="detail-memory"><div class="range-heading"><span>RAM ALLOCATION</span><strong id="detail-ram-label">2 GB</strong></div><div class="memory-slider-row"><span>512 MB</span><input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Version memory allocation"><span>16 GB</span></div></div></div>
+            <div class="detail-content" id="detail-content" style="display:none"><div class="detail-head"><div><span class="section-eyebrow">SELECTED VERSION</span><div class="detail-title-row"><span class="detail-id" id="detail-id">—</span><span class="detail-badge" id="detail-badge">release</span></div></div><span class="detail-cube">◈</span></div><span class="detail-date" id="detail-date">—</span><div class="detail-rule"></div><div class="detail-loader-controls"><label class="select-wrap"><span>MOD LOADER</span><select id="detail-loader-type"><option value="vanilla">Vanilla</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select></label><label class="select-wrap loader-version-wrap" id="detail-loader-version-wrap" hidden><span>LOADER VERSION</span><select id="detail-loader-version"><option value="">Latest compatible</option></select></label></div><button id="detail-install" class="button primary detail-launch"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Install &amp; play</span></button><div class="detail-info"><div class="info-row"><span>GAME DIRECTORY</span><strong id="detail-dir">—</strong></div><div class="info-row"><span>VERSION ID</span><strong id="detail-ver">—</strong></div><div class="info-row"><span>RELEASE TYPE</span><strong id="detail-type">—</strong></div><div class="info-row"><span>RUNTIME</span><strong id="detail-loader-label">Vanilla</strong></div></div><div class="detail-rule"></div><div class="detail-memory"><div class="range-heading"><span>RAM ALLOCATION</span><strong id="detail-ram-label">2 GB</strong></div><div class="memory-slider-row"><span>512 MB</span><input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Version memory allocation"><span>16 GB</span></div></div></div>
           </section>
         </div>
       </div>
@@ -145,70 +126,6 @@
       <div class="page" id="page-modpacks">
         <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Create packs with any loader and install mods from Modrinth or CurseForge.</p></div><div class="heading-actions"><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
         <div class="versions-layout">
-          <!-- Version list panel -->
-          <div class="card versions-list-panel">
-            <div class="filter-tabs">
-              <button class="filter-tab active" data-filter="all">All</button>
-              <button class="filter-tab" data-filter="release">Release</button>
-              <button class="filter-tab" data-filter="snapshot">Snapshot</button>
-            </div>
-            <div class="version-items" id="version-list"></div>
-          </div>
-
-          <!-- Version details panel -->
-          <div class="card versions-detail-panel" id="version-detail">
-            <div class="detail-empty" id="detail-empty">
-              <span class="detail-empty-icon">📦</span>
-              <p>Select a version from the list</p>
-            </div>
-            <div class="detail-content" id="detail-content" style="display:none">
-              <div class="detail-head">
-                <span class="detail-id" id="detail-id">—</span>
-                <span class="detail-badge" id="detail-badge">release</span>
-              </div>
-              <span class="detail-date" id="detail-date">—</span>
-              <div class="card-divider"></div>
-
-              <!-- Mod Loader Selection -->
-              <div class="detail-loader-section">
-                <div class="info-row">
-                  <span class="info-label">Mod Loader</span>
-                  <span class="info-value">
-                    <select id="detail-loader-type" class="loader-select">
-                      <option value="">Vanilla (no mod loader)</option>
-                      <option value="fabric">Fabric</option>
-                      <option value="quilt">Quilt</option>
-                      <option value="forge">Forge</option>
-                    </select>
-                  </span>
-                </div>
-                <div class="info-row loader-version-row" id="detail-loader-version-row" style="display:none">
-                  <span class="info-label">Loader Version</span>
-                  <span class="info-value">
-                    <select id="detail-loader-version" class="loader-select"></select>
-                  </span>
-                </div>
-              </div>
-
-              <div class="detail-actions">
-                <button id="detail-install" class="primary">▶ Install &amp; Play</button>
-              </div>
-              <div class="detail-info">
-                <div class="info-row"><span class="info-label">Game Directory</span><span class="info-value" id="detail-dir">—</span></div>
-                <div class="info-row"><span class="info-label">Version ID</span><span class="info-value" id="detail-ver">—</span></div>
-                <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="detail-type">—</span></div>
-                <div class="info-row"><span class="info-label">Mod Loader</span><span class="info-value" id="detail-loader-label">Vanilla</span></div>
-              </div>
-              <div class="card-divider"></div>
-              <div class="detail-memory">
-                <label class="slider-label">
-                  <span>RAM: <strong id="detail-ram-label">2 GB</strong></span>
-                </label>
-                <div class="memory-slider-row">
-                  <span>512 MB</span>
-                  <input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048">
-                  <span>16 GB</span>
-                </div>
           <section class="card versions-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Modpacks</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="version-items" id="modpack-list"></div></section>
           <section class="card versions-detail-panel" id="modpack-detail">
             <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create a new pack or select one from the list.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
@@ -262,8 +179,9 @@
         <div class="settings-grid">
           <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">RUNTIME</span><h2>Java settings</h2></div><span class="panel-icon">☕</span></div><div class="settings-field"><label class="field-label" for="settings-java-path">JAVA PATH OVERRIDE</label><span class="field-hint">Leave empty and Amethyst will auto-detect Java.</span><input id="settings-java-path" placeholder="Auto-detect Java" autocomplete="off"></div><div class="field-group"><span class="field-label">DETECTED INSTALLATIONS</span><div id="settings-java-list" class="java-list"><span class="muted">Scanning…</span></div></div></section>
           <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">PERFORMANCE</span><h2>Game settings</h2></div><span class="panel-icon">◒</span></div><div class="settings-field"><label class="field-label">MEMORY ALLOCATION</label><span class="field-hint">Amount of RAM allocated to Minecraft.</span><div class="memory-slider-row settings-memory-row"><span>512 MB</span><input id="settings-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Memory allocation"><span>16 GB</span></div><div class="memory-value-display" id="settings-memory-display">2 GB (2048 MB)</div></div></section>
+          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">MODS</span><h2>Default runtime</h2></div><span class="panel-icon">⬡</span></div><div class="settings-field"><label class="field-label" for="settings-loader-type">MOD LOADER</label><span class="field-hint">Used by Quick Launch. Choose the loader required by the jars in your mods folder.</span><select id="settings-loader-type"><option value="vanilla">Vanilla</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select></div><div class="settings-field loader-version-wrap" id="settings-loader-version-wrap" hidden><label class="field-label" for="settings-loader-version">LOADER VERSION</label><select id="settings-loader-version"><option value="">Latest compatible</option></select></div></section>
           <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">STORAGE</span><h2>Data directory</h2></div><span class="panel-icon">⌂</span></div><div class="data-directory"><span class="directory-icon">/</span><div><strong id="settings-data-dir">—</strong><p>Set <code>AMETHYST_HOME</code> to change this location.</p></div></div><div class="data-directory" style="margin-top:12px"><span class="directory-icon">⊞</span><div><strong id="settings-game-dir">—</strong><p>Choose which drive to download game files to.</p></div><button id="settings-change-dir" class="button button-quiet" style="margin-left:auto">Change</button></div></section>
-          <section class="card settings-card about-card"><div class="panel-heading"><div><span class="section-eyebrow">ABOUT</span><h2>Amethyst</h2></div><span class="panel-icon">✦</span></div><div class="about-content"><div class="about-title-row"><span class="about-name">A focused vanilla experience.</span><span class="about-version">v<span id="about-version">0.1.0</span></span></div><p>All game files are downloaded from official Mojang / Microsoft servers when you need them. Amethyst does not bundle or redistribute Minecraft code.</p><div class="about-status-row"><span class="status-dot offline" id="about-dot"></span><span id="about-backend-status">Disconnected</span><span class="status-separator">·</span><span>Node.js backend</span></div></div></section>
+          <section class="card settings-card about-card"><div class="panel-heading"><div><span class="section-eyebrow">ABOUT</span><h2>Amethyst</h2></div><span class="panel-icon">✦</span></div><div class="about-content"><div class="about-title-row"><span class="about-name">A focused vanilla and modded experience.</span><span class="about-version">v<span id="about-version">0.1.0</span></span></div><p>All game files are downloaded from official Mojang / Microsoft servers when you need them. Amethyst does not bundle or redistribute Minecraft code.</p><div class="about-status-row"><span class="status-dot offline" id="about-dot"></span><span id="about-backend-status">Disconnected</span><span class="status-separator">·</span><span>Node.js backend</span></div></div></section>
         </div>
       </div>
     </main>
