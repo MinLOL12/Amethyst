@@ -96,7 +96,8 @@ async function startBackend() {
   await initializeStore();
 
   const server = createServer();
-  await listen(server, requestedPort(process.env.PORT));
+  const port = (process.env.PORT !== undefined && process.env.PORT !== '') ? process.env.PORT : '3000';
+  await listen(server, requestedPort(port));
 
   const address = server.address();
   return { server, url: `http://127.0.0.1:${address.port}/` };
