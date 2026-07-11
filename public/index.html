@@ -30,13 +30,17 @@
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"/></svg>
           <span>Versions</span><kbd>2</kbd>
         </a>
+        <a class="nav-item" data-page="modpacks" href="#modpacks">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Modpacks</span><kbd>3</kbd>
+        </a>
         <a class="nav-item" data-page="accounts" href="#accounts">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.2 3.1-5 7-5s6.4 1.8 7 5"/></svg>
-          <span>Accounts</span><kbd>3</kbd>
+          <span>Accounts</span><kbd>4</kbd>
         </a>
         <a class="nav-item" data-page="settings" href="#settings">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/><circle cx="12" cy="12" r="4"/></svg>
-          <span>Settings</span><kbd>4</kbd>
+          <span>Settings</span><kbd>5</kbd>
         </a>
       </nav>
 
@@ -114,6 +118,33 @@
         </div>
       </div>
 
+      <div class="page" id="page-modpacks">
+        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Create packs with any loader and install mods from Modrinth or CurseForge.</p></div><div class="heading-actions"><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
+        <div class="versions-layout">
+          <section class="card versions-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Modpacks</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="version-items" id="modpack-list"></div></section>
+          <section class="card versions-detail-panel" id="modpack-detail">
+            <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create a new pack or select one from the list.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
+            <div class="detail-content" id="modpack-content" style="display:none">
+              <div class="detail-head"><div><span class="section-eyebrow">MODPACK</span><div class="detail-title-row"><span class="detail-id" id="mp-name">—</span><span class="detail-badge" id="mp-badge-loader">vanilla</span><span class="detail-badge" id="mp-badge-mc">—</span></div><small id="mp-sub" class="muted"></small></div><span class="detail-cube">◫</span></div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <button id="mp-install" class="button primary"><span>Install</span></button>
+                <button id="mp-launch" class="button button-subtle"><span>Launch</span></button>
+                <button id="mp-delete" class="button button-quiet" style="color:#ff7f9f">Delete</button>
+              </div>
+              <div class="detail-rule"></div>
+              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="browse">Browse</button><button class="filter-tab" data-tab="settings">Settings</button></div>
+              <div id="mp-tab-mods"><div id="mp-mods-list" style="display:flex; flex-direction:column; gap:8px; margin-top:12px"></div></div>
+              <div id="mp-tab-browse" style="display:none">
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap"><input id="mp-search" placeholder="Search mods…" style="flex:1; min-width:180px"><select id="mp-source" style="width:140px"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select><button id="mp-search-btn" class="button button-quiet">Search</button></div>
+                <div id="mp-browse-info" class="muted" style="font-size:.7rem; margin-top:8px"></div>
+                <div id="mp-browse-results" style="display:flex; flex-direction:column; gap:8px; margin-top:10px"></div>
+              </div>
+              <div id="mp-tab-settings" style="display:none"><div class="detail-info" style="margin-top:12px"><div class="info-row"><span>NAME</span><strong id="mp-set-name">—</strong></div><div class="info-row"><span>MC VERSION</span><strong id="mp-set-mc">—</strong></div><div class="info-row"><span>LOADER</span><strong id="mp-set-loader">—</strong></div><div class="info-row"><span>LOADER VER</span><strong id="mp-set-loader-ver">—</strong></div><div class="info-row"><span>GAME DIR</span><strong id="mp-set-dir">—</strong></div><div class="info-row"><span>CUSTOM ID</span><strong id="mp-set-custom">—</strong></div></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <div class="page" id="page-accounts">
         <div class="page-heading"><div><span class="section-eyebrow">IDENTITY</span><h1>Accounts</h1><p>Keep your offline profiles close at hand.</p></div><button id="accounts-refresh" class="button button-quiet">↻ <span>Refresh</span></button></div>
         <div class="accounts-layout"><section class="card accounts-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">LOCAL PROFILES</span><h2>Offline accounts</h2></div><span class="panel-count" id="account-panel-count">0</span></div><div class="account-items" id="account-list"><div class="account-empty"><div class="empty-glyph">◇</div><strong>No accounts yet</strong><p>Add a profile to launch Minecraft.</p></div></div></section><section class="card accounts-add-panel"><span class="section-eyebrow">NEW PROFILE</span><h2>Add an offline account</h2><p class="panel-copy">Create a local identity for single-player worlds and offline servers.</p><div class="info-banner"><span class="info-banner-icon">i</span><div><strong>Offline mode</strong><p>No credentials leave this machine. Online servers that require Microsoft authentication will not accept this profile.</p></div></div><label class="field-label" for="account-username">USERNAME</label><input id="account-username" placeholder="e.g. Alex" maxlength="16" autocomplete="off"><button id="account-add" class="button primary add-btn"><span>Add account</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button><div class="selected-account" id="selected-account" style="display:none"><span class="selected-label">CURRENTLY SELECTED</span><strong class="selected-name" id="selected-name">—</strong></div></section></div>
@@ -131,10 +162,23 @@
     </main>
   </div>
 
-  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="nav-item active" data-page="home" href="#home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg><span>Home</span></a><a class="nav-item" data-page="versions" href="#versions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"/></svg><span>Versions</span></a><a class="nav-item" data-page="accounts" href="#accounts"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.2 3.1-5 7-5s6.4 1.8 7 5"/></svg><span>Accounts</span></a><a class="nav-item" data-page="settings" href="#settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/><circle cx="12" cy="12" r="4"/></svg><span>Settings</span></a></nav>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="nav-item active" data-page="home" href="#home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg><span>Home</span></a><a class="nav-item" data-page="versions" href="#versions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"/></svg><span>Versions</span></a><a class="nav-item" data-page="modpacks" href="#modpacks"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Packs</span></a><a class="nav-item" data-page="accounts" href="#accounts"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.2 3.1-5 7-5s6.4 1.8 7 5"/></svg><span>Accounts</span></a><a class="nav-item" data-page="settings" href="#settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/><circle cx="12" cy="12" r="4"/></svg><span>Settings</span></a></nav>
 
   <div class="modal-overlay" id="download-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal"><div class="modal-header"><div class="modal-icon"><span id="modal-icon">✦</span></div><div><span class="modal-title" id="modal-title">Installation</span><span class="modal-version" id="modal-version">—</span></div><button id="modal-close" class="modal-dismiss" aria-label="Close">×</button></div><div class="modal-body"><div class="modal-status-icon" id="modal-status-icon">◌</div><span class="modal-status-text" id="modal-status-text">Preparing…</span><div class="modal-progress-wrap" id="modal-progress-wrap"><div class="modal-progress-bar" id="modal-progress-bar"></div></div><span class="modal-percent" id="modal-percent">0%</span></div><div class="modal-actions"><button id="modal-primary" class="button button-subtle">Cancel</button></div></div>
+  </div>
+
+  <div class="modal-overlay" id="modpack-modal" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal" style="width:min(520px,100%)"><div class="modal-header"><div class="modal-icon"><span>◫</span></div><div><span class="modal-title">New modpack</span><span class="modal-version">Create from MC version + loader</span></div><button id="modpack-modal-close" class="modal-dismiss">×</button></div>
+      <div class="modal-body" style="align-items:stretch">
+        <label class="field-label">NAME</label><input id="mp-new-name" placeholder="My pack">
+        <label class="field-label" style="margin-top:10px">DESCRIPTION (optional)</label><input id="mp-new-desc" placeholder="A cool pack">
+        <label class="field-label" style="margin-top:10px">MINECRAFT VERSION</label><select id="mp-new-mc"><option value="">Select…</option></select>
+        <label class="field-label" style="margin-top:10px">MOD LOADER</label><select id="mp-new-loader"><option value="vanilla">Vanilla</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select>
+        <div id="mp-new-loader-ver-wrap" style="display:none; flex-direction:column; gap:6px; margin-top:10px"><label class="field-label">LOADER VERSION (optional, empty = latest)</label><div style="display:flex; gap:8px"><select id="mp-new-loader-ver" style="flex:1"><option value="">Latest</option></select><button id="mp-new-loader-refresh" class="button button-quiet">Refresh</button></div></div>
+      </div>
+      <div class="modal-actions" style="gap:8px"><button id="mp-new-cancel" class="button button-quiet">Cancel</button><button id="mp-new-create" class="button primary">Create</button></div>
+    </div>
   </div>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
   <pre id="log" class="log-hidden"></pre>
