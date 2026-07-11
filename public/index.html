@@ -7,93 +7,330 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <!-- Main layout -->
   <div class="shell">
+
+    <!-- Left sidebar navigation -->
     <aside class="sidebar">
-      <div class="brand">
+      <div class="sidebar-header">
         <div class="gem">◆</div>
         <div>
           <h1>Amethyst</h1>
-          <p>Vanilla Launcher MVP</p>
+          <p>Minecraft Launcher</p>
         </div>
       </div>
 
-      <section class="card compact">
-        <h2>Offline Login</h2>
-        <form id="account-form" class="inline-form">
-          <input id="username" autocomplete="username" placeholder="Offline username" maxlength="16">
-          <button type="submit">Save</button>
-        </form>
-        <select id="account-select" aria-label="Saved account"></select>
-        <small>Offline accounts are saved locally only. They do not authenticate with Microsoft/Mojang.</small>
-      </section>
+      <nav class="nav-list">
+        <a class="nav-item active" data-page="home" href="#">
+          <span class="nav-icon">🏠</span>
+          <span>Home</span>
+        </a>
+        <a class="nav-item" data-page="versions" href="#">
+          <span class="nav-icon">📦</span>
+          <span>Versions</span>
+        </a>
+        <a class="nav-item" data-page="accounts" href="#">
+          <span class="nav-icon">👤</span>
+          <span>Accounts</span>
+        </a>
+        <a class="nav-item" data-page="settings" href="#">
+          <span class="nav-icon">⚙️</span>
+          <span>Settings</span>
+        </a>
+      </nav>
 
-      <section class="card compact">
-        <h2>Settings</h2>
-        <label class="slider-label" for="memory-slider">
-          Memory allocation
-          <strong><span id="memory-value">2048</span> MB</strong>
-        </label>
-        <input id="memory-slider" type="range" min="512" max="16384" step="256" value="2048">
-        <label for="java-path">Java path override</label>
-        <input id="java-path" placeholder="Auto-detect Java">
-        <button id="save-settings">Save settings</button>
-      </section>
+      <div class="sidebar-footer">
+        <div class="status-row">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </div>
+        <span class="version-label">v<span id="app-version">0.1.0</span></span>
+      </div>
     </aside>
 
+    <!-- Main content area -->
     <main class="content">
-      <section class="hero card">
-        <div>
-          <span class="eyebrow">Dark purple Minecraft launcher</span>
-          <h2>Launch official vanilla versions</h2>
-          <p>Amethyst downloads Mojang's public version manifest, libraries, assets, and client jars at launch time. It does not bundle Minecraft code.</p>
-        </div>
-        <div class="actions">
-          <select id="version-select" aria-label="Minecraft version"></select>
-          <button id="install-button" class="secondary">Install</button>
-          <button id="launch-button" class="primary">Launch</button>
-        </div>
-      </section>
 
-      <section class="grid">
+      <!-- Top status bar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <span class="topbar-path" id="topbar-path"></span>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-progress" id="topbar-progress">
+            <div class="progress-mini-bar"><div class="progress-mini-fill" id="progress-mini-fill"></div></div>
+            <span id="progress-mini-text"></span>
+          </div>
+          <span id="topbar-status"></span>
+        </div>
+      </div>
+
+      <!-- ===== PAGE: HOME ===== -->
+      <div class="page active" id="page-home">
+
+        <!-- Welcome card -->
+        <div class="card hero-card">
+          <div>
+            <span class="eyebrow">💎 Welcome to Amethyst</span>
+            <h2>Launch official vanilla Minecraft</h2>
+            <p>A dark purple Minecraft vanilla launcher. Amethyst downloads Mojang's official version manifest, libraries, assets, and client jars at launch time. It does not bundle Minecraft code.</p>
+          </div>
+          <div class="actions">
+            <button id="home-browse" class="primary">Browse Versions</button>
+            <button id="home-accounts" class="secondary">Manage Accounts</button>
+          </div>
+        </div>
+
+        <!-- Quick launch -->
         <div class="card">
-          <div class="section-head">
-            <h2>Download progress</h2>
-            <span id="task-state" class="pill">Idle</span>
+          <div class="card-header">
+            <span class="card-icon">🚀</span>
+            <h2>Quick Launch</h2>
           </div>
-          <div class="progress-wrap">
-            <div id="progress-bar" class="progress-bar"></div>
+          <div class="card-divider"></div>
+          <div class="quicklaunch-row">
+            <select id="ql-version" class="ql-select" aria-label="Select version"></select>
+            <button id="ql-launch" class="primary" disabled>Launch</button>
           </div>
-          <div id="progress-text" class="progress-text">Waiting for a task…</div>
-          <pre id="log" class="log"></pre>
+          <div class="quicklaunch-row">
+            <label class="slider-label">
+              <span>Memory</span>
+              <strong><span id="ql-memory-value">2048</span> MB</strong>
+            </label>
+            <input id="ql-memory" type="range" min="512" max="16384" step="256" value="2048">
+          </div>
         </div>
 
+        <!-- News section -->
         <div class="card">
-          <div class="section-head">
-            <h2>Detected Java</h2>
-            <button id="refresh-java" class="ghost">Refresh</button>
+          <div class="card-header">
+            <span class="card-icon">📰</span>
+            <h2>Latest News</h2>
+            <div class="spacer"></div>
+            <button id="refresh-news" class="ghost">Refresh</button>
           </div>
-          <div id="java-list" class="list muted">Scanning…</div>
+          <div class="card-divider"></div>
+          <div class="news-grid" id="news">
+            <p class="muted">Loading news…</p>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <section class="card news-card">
-        <div class="section-head">
-          <h2>News</h2>
-          <button id="refresh-news" class="ghost">Refresh</button>
+      <!-- ===== PAGE: VERSIONS ===== -->
+      <div class="page" id="page-versions">
+        <div class="page-header">
+          <h2>Versions</h2>
+          <div class="spacer"></div>
+          <button id="versions-refresh" class="ghost">↻ Refresh</button>
+          <input id="versions-search" class="search-input" placeholder="Search versions...">
         </div>
-        <div id="news" class="news-grid"></div>
-      </section>
+
+        <div class="versions-layout">
+          <!-- Version list panel -->
+          <div class="card versions-list-panel">
+            <div class="filter-tabs">
+              <button class="filter-tab active" data-filter="all">All</button>
+              <button class="filter-tab" data-filter="release">Release</button>
+              <button class="filter-tab" data-filter="snapshot">Snapshot</button>
+            </div>
+            <div class="version-items" id="version-list"></div>
+          </div>
+
+          <!-- Version details panel -->
+          <div class="card versions-detail-panel" id="version-detail">
+            <div class="detail-empty" id="detail-empty">
+              <span class="detail-empty-icon">📦</span>
+              <p>Select a version from the list</p>
+            </div>
+            <div class="detail-content" id="detail-content" style="display:none">
+              <div class="detail-head">
+                <span class="detail-id" id="detail-id">—</span>
+                <span class="detail-badge" id="detail-badge">release</span>
+              </div>
+              <span class="detail-date" id="detail-date">—</span>
+              <div class="card-divider"></div>
+              <div class="detail-actions">
+                <button id="detail-install" class="primary">▶ Install &amp; Play</button>
+              </div>
+              <div class="detail-info">
+                <div class="info-row"><span class="info-label">Game Directory</span><span class="info-value" id="detail-dir">—</span></div>
+                <div class="info-row"><span class="info-label">Version ID</span><span class="info-value" id="detail-ver">—</span></div>
+                <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="detail-type">—</span></div>
+              </div>
+              <div class="card-divider"></div>
+              <div class="detail-memory">
+                <label class="slider-label">
+                  <span>RAM: <strong id="detail-ram-label">2 GB</strong></span>
+                </label>
+                <div class="memory-slider-row">
+                  <span>512 MB</span>
+                  <input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048">
+                  <span>16 GB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PAGE: ACCOUNTS ===== -->
+      <div class="page" id="page-accounts">
+        <div class="page-header">
+          <h2>Accounts</h2>
+          <div class="spacer"></div>
+          <button id="accounts-refresh" class="ghost">↻ Refresh</button>
+        </div>
+
+        <div class="accounts-layout">
+          <!-- Account list -->
+          <div class="card accounts-list-panel">
+            <div class="accounts-list-header">
+              <span>👤 Offline Accounts</span>
+            </div>
+            <div class="account-items" id="account-list">
+              <div class="account-empty">
+                <span class="detail-empty-icon">👻</span>
+                <p>No accounts yet</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add account panel -->
+          <div class="card accounts-add-panel">
+            <h3>Add Offline Account</h3>
+            <div class="info-banner">
+              <span class="info-banner-icon">ℹ️</span>
+              <div>
+                <strong>Offline Mode Account</strong>
+                <p>Offline accounts can only join offline servers and single-player worlds.</p>
+              </div>
+            </div>
+            <label class="field-label">Username</label>
+            <input id="account-username" placeholder="Enter username..." maxlength="16">
+            <button id="account-add" class="primary add-btn">➕ Add Account</button>
+            <div class="spacer"></div>
+            <div class="selected-account" id="selected-account" style="display:none">
+              <span class="selected-label">Selected Account</span>
+              <span class="selected-name" id="selected-name">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PAGE: SETTINGS ===== -->
+      <div class="page" id="page-settings">
+        <div class="page-header">
+          <h2>Settings</h2>
+          <div class="spacer"></div>
+          <button id="settings-save" class="primary">💾 Save</button>
+        </div>
+
+        <div class="settings-scroll">
+          <!-- Java Settings -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <span class="card-icon">☕</span>
+              <h2>Java Settings</h2>
+            </div>
+            <div class="card-divider"></div>
+            <div class="settings-field">
+              <label class="field-label">Java Path Override</label>
+              <span class="field-hint">Leave empty for auto-detect</span>
+              <input id="settings-java-path" placeholder="Auto-detect Java">
+            </div>
+            <div class="field-group">
+              <span class="field-label">Detected Java Installations</span>
+              <div id="settings-java-list" class="java-list"><span class="muted">Scanning…</span></div>
+            </div>
+          </div>
+
+          <!-- Game Settings -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <span class="card-icon">🎮</span>
+              <h2>Game Settings</h2>
+            </div>
+            <div class="card-divider"></div>
+            <div class="settings-field">
+              <label class="field-label">Memory Allocation (RAM)</label>
+              <span class="field-hint">Amount of RAM allocated to Minecraft</span>
+              <div class="memory-slider-row">
+                <span>512 MB</span>
+                <input id="settings-memory" type="range" min="512" max="16384" step="256" value="2048">
+                <span>16 GB</span>
+              </div>
+              <div class="memory-value-display" id="settings-memory-display">2 GB (2048 MB)</div>
+            </div>
+          </div>
+
+          <!-- Data Settings -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <span class="card-icon">📁</span>
+              <h2>Data Settings</h2>
+            </div>
+            <div class="card-divider"></div>
+            <div class="settings-field">
+              <label class="field-label">Data Directory</label>
+              <span class="field-hint" id="settings-data-dir">—</span>
+              <span class="field-hint muted">Set AMETHYST_HOME environment variable to change</span>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div class="card settings-card">
+            <div class="card-header">
+              <span class="card-icon">💎</span>
+              <h2>About</h2>
+            </div>
+            <div class="card-divider"></div>
+            <div class="about-content">
+              <div class="about-title-row">
+                <span class="about-name">Amethyst</span>
+                <span class="about-version">v<span id="about-version">0.1.0</span></span>
+              </div>
+              <p>A dark purple Minecraft vanilla launcher built with Node.js</p>
+              <p class="muted">Amethyst does not include or redistribute Minecraft code. All game files are downloaded from official Mojang/Microsoft servers.</p>
+              <div class="card-divider"></div>
+              <div class="about-status-row">
+                <span>Backend:</span>
+                <span class="status-dot" id="about-dot"></span>
+                <span id="about-backend-status">Disconnected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
-  <template id="news-template">
-    <article class="news-item">
-      <span class="news-meta"></span>
-      <h3></h3>
-      <p></p>
-      <a target="_blank" rel="noreferrer">Read more</a>
-    </article>
-  </template>
+  <!-- Download Dialog (modal) -->
+  <div class="modal-overlay" id="download-modal" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-icon" id="modal-icon">💎</span>
+        <div>
+          <span class="modal-title" id="modal-title">Installation</span>
+          <span class="modal-version" id="modal-version">—</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-status-icon" id="modal-status-icon">⏳</div>
+        <span class="modal-status-text" id="modal-status-text">Preparing...</span>
+        <div class="modal-progress-wrap" id="modal-progress-wrap">
+          <div class="modal-progress-bar" id="modal-progress-bar"></div>
+        </div>
+        <span class="modal-percent" id="modal-percent">0%</span>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-primary" class="primary">Cancel</button>
+        <button id="modal-close" class="ghost">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log overlay (hidden, but we still need log output) -->
+  <pre id="log" class="log-hidden"></pre>
 
   <script src="/app.js"></script>
 </body>
