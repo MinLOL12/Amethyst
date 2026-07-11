@@ -739,15 +739,18 @@ function selectVersion(id, type = 'release') {
   $('#detail-ver').textContent = id;
   $('#detail-type').textContent = type;
   $('#detail-dir').textContent = state.settings?.gameDir || '—';
-  updateDetailInstallButton(id);
+  updateDetailInstallButton(id).catch(reportError);
   refreshLoaderVersions().catch(reportError);
 }
 
-function updateDetailInstallButton(versionId) {
+async function updateDetailInstallButton(versionId) {
   const installBtn = $('#detail-install');
   const uninstallBtn = $('#detail-uninstall');
   if (!installBtn) return;
-  const installed = isVersionInstalled(versionId);
+  // Use the loader-aware backend check so switching loaders correctly reflects
+  // whether the version with the currently selected loader is actually installed.
+  const check = await checkInstalled(versionId);
+  const installed = check.installed;
   installBtn.innerHTML = installed
     ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Play</span>'
     : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Install &amp; play</span>';
@@ -1295,7 +1298,7 @@ function connectEvents() {
         if (event.name.startsWith('Install ')) {
           await loadInstalledVersions();
           renderVersionSelect();
-          if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId);
+          if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId).catch(reportError);
         }
         log(`Complete: ${event.name}`);
         break;
@@ -1448,12 +1451,18 @@ function bindUi() {
     refreshLoaderVersions().catch(reportError);
   });
   for (const selector of loaderTypeSelectors) {
-    $(selector)?.addEventListener('change', (event) => {
-      selectLoader(event.target.value).catch(reportError);
+    $(selector)?.addEventListener('change', async (event) => {
+      await selectLoader(event.target.value);
+      // Re-evaluate the install/play button with the new loader context
+      if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId);
     });
   }
   for (const selector of loaderVersionSelectors) {
-    $(selector)?.addEventListener('change', (event) => syncSelectedLoaderVersion(event.target.value));
+    $(selector)?.addEventListener('change', async (event) => {
+      syncSelectedLoaderVersion(event.target.value);
+      // Changing loader version may affect whether the version is installed
+      if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId);
+    });
   }
   $('#ql-launch')?.addEventListener('click', async () => {
     const versionId = $('#ql-version')?.value;
@@ -1506,7 +1515,7 @@ function bindUi() {
       notify(`${state.selectedVersionId} uninstalled.`);
       await loadInstalledVersions();
       renderVersionSelect();
-      updateDetailInstallButton(state.selectedVersionId);
+      await updateDetailInstallButton(state.selectedVersionId);
     } catch (error) {
       reportError(error);
     }
