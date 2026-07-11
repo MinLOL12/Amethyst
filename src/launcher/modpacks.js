@@ -149,7 +149,15 @@ async function installModpack(id, options={}){
   const loader=manifest.loader;
   const loaderVersion=manifest.loaderVersion;
   progressBus.emitEvent('status',{message:`Installing modpack ${manifest.name} (${mcVersion}) with ${loader}`});
-  const baseInstall=await installVersion(mcVersion,{gameDir,...options});
+  // A modpack manages its own loader below. Do not let the global Quick Launch
+  // loader setting wrap the vanilla parent in a second, unrelated loader.
+  const baseInstall=await installVersion(mcVersion,{
+    ...options,
+    gameDir,
+    loader:'vanilla',
+    loaderType:'vanilla',
+    loaderVersion:''
+  });
   let customVersionId=mcVersion;
 
   if(loader==='vanilla'){
@@ -295,7 +303,14 @@ async function launchModpack(id, accountIdOrObj, options={}){
   // working directory on this pack. The old Fabric/Quilt shortcut launched
   // the raw child profile with a non-existent child client jar.
   const { launchVersion } = require('./minecraft');
-  return launchVersion(versionToLaunch, accountId, { ...options, gameDir });
+  return launchVersion(versionToLaunch, accountId, {
+    ...options,
+    gameDir,
+    loader: 'vanilla',
+    loaderType: 'vanilla',
+    loaderVersion: '',
+    persistLoader: false
+  });
 }
 
 async function listMods(id){

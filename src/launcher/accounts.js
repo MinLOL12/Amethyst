@@ -195,7 +195,7 @@ async function readSettings() {
 
 async function saveSettings(partial) {
   const defaults = getDefaultSettings();
-  const current = await readSettings();
+  const current = await readJson(paths().settings, defaults);
   const next = { ...defaults, ...current, ...partial };
   next.memoryMb = Math.min(16384, Math.max(512, Number(next.memoryMb) || defaults.memoryMb));
   next.resolutionWidth = Math.min(7680, Math.max(640, Number(next.resolutionWidth) || defaults.resolutionWidth));
@@ -205,6 +205,11 @@ async function saveSettings(partial) {
   next.rememberMicrosoftLogin = next.rememberMicrosoftLogin !== false;
   next.jvmArgs = String(next.jvmArgs || '');
   next.launchArgs = String(next.launchArgs || '');
+  const loaderType = String(next.loaderType || 'vanilla').toLowerCase();
+  next.loaderType = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'].includes(loaderType)
+    ? loaderType
+    : 'vanilla';
+  next.loaderVersion = next.loaderType === 'vanilla' ? '' : String(next.loaderVersion || '');
   await writeJson(paths().settings, next);
   return next;
 }

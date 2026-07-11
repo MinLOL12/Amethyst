@@ -31,7 +31,11 @@ const {
   exportInstance,
   importInstance
 } = require('./launcher/instances');
-const { LOADERS, listLoaderVersions, installLoader } = require('./launcher/modLoaders');
+const {
+  LOADERS,
+  listLoaderVersions,
+  findInstalledLoaderProfile
+} = require('./launcher/modLoaders');
 const {
   listAllJava,
   listDownloadableJava,
@@ -356,12 +360,48 @@ async function handleApi(request, response, url) {
     return json(response, 200, await listLoaderVersions(loader, gameVersion));
   }
 
+  // Aggregate endpoint used by Quick Launch. Keep the per-loader endpoint
+  // above for clients that only need one list.
+  if (method === 'GET' && url.pathname === '/api/modloaders') {
+    const gameVersion = url.searchParams.get('mcVersion') || url.searchParams.get('gameVersion');
+    if (!gameVersion) return json(response, 400, { error: 'mcVersion query parameter is required' });
+    const entries = await Promise.all(
+      LOADERS.filter((loader) => loader !== 'vanilla').map(async (loader) => [
+        loader,
+        await listLoaderVersions(loader, gameVersion)
+      ])
+    );
+    return json(response, 200, {
+      mcVersion: gameVersion,
+      loaders: Object.fromEntries(entries.map(([loader, result]) => [loader, result.versions || []]))
+    });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/modloaders/installed') {
+    const settings = await readSettings();
+    const gameVersion = url.searchParams.get('mcVersion') || settings.lastVersion || '';
+    const gameDir = url.searchParams.get('gameDir') || settings.gameDir;
+    const installed = { fabric: null, forge: null, neoforge: null, quilt: null };
+    if (gameVersion) {
+      for (const loader of Object.keys(installed)) {
+        const versionId = await findInstalledLoaderProfile(loader, gameVersion, '', gameDir);
+        installed[loader] = versionId ? { versionId } : null;
+      }
+    }
+    return json(response, 200, { mcVersion: gameVersion, installed });
+  }
+
   if (method === 'POST' && url.pathname === '/api/loaders/install') {
     const body = await readBody(request);
+    if (!body.gameVersion) throw new Error('gameVersion is required');
     const job = downloadQueue.enqueue({
       name: `Install ${body.loader} ${body.loaderVersion || ''} for ${body.gameVersion}`,
       type: 'loader',
-      run: async () => installLoader(body.loader, body.gameVersion, body.loaderVersion, body)
+      run: async () => installVersion(body.gameVersion, {
+        ...body,
+        loaderType: body.loader,
+        loaderVersion: body.loaderVersion
+      })
     });
     return json(response, 202, { job });
   }
@@ -404,10 +444,12 @@ async function handleApi(request, response, url) {
 
     // Check if already installed - skip downloads if so
     if (!body.skipInstall) {
-      const check = await checkVersionInstalled(body.versionId || (await getInstance(body.instanceId)).playVersionId, body);
+      const check = await checkVersionInstalled(body.versionId, body);
       if (check.installed) {
         body.skipInstall = true;
-        progressBus.emitEvent('status', { message: `${body.versionId} already installed — skipping downloads` });
+        progressBus.emitEvent('status', {
+          message: `${check.versionId} already installed — skipping downloads`
+        });
       }
     }
 
