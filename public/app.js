@@ -24,6 +24,8 @@ const state = {
   skinAccountId: null,
   skinImageData: '',
   skinSourceUrl: '',
+  loaderVersions: {},
+  loaderRequestId: 0,
 };
 
 const pageLabels = {
@@ -126,6 +128,138 @@ function memoryValue() {
   return Number($('#settings-memory')?.value || $('#ql-memory')?.value || state.settings?.memoryMb || 2048);
 }
 
+const loaderTypeSelectors = ['#ql-loader-type', '#detail-loader-type', '#settings-loader-type'];
+const loaderVersionSelectors = ['#ql-loader-version', '#detail-loader-version', '#settings-loader-version'];
+const loaderVersionWraps = ['#ql-loader-version-wrap', '#detail-loader-version-wrap', '#settings-loader-version-wrap'];
+
+function selectedLoaderType() {
+  return $('#ql-loader-type')?.value || state.settings?.loaderType || 'vanilla';
+}
+
+function selectedLoaderVersion() {
+  return $('#ql-loader-version')?.value || state.settings?.loaderVersion || '';
+}
+
+function updateLoaderLabel() {
+  const label = $('#detail-loader-label');
+  if (!label) return;
+  const loader = selectedLoaderType();
+  const version = selectedLoaderVersion();
+  label.textContent = loader === 'vanilla'
+    ? 'Vanilla'
+    : `${loader[0].toUpperCase()}${loader.slice(1)}${version ? ` ${version}` : ' · latest compatible'}`;
+}
+
+function syncLoaderValues(loader, loaderVersion = '') {
+  for (const selector of loaderTypeSelectors) {
+    const select = $(selector);
+    if (select) select.value = loader;
+  }
+  for (const selector of loaderVersionSelectors) {
+    const select = $(selector);
+    if (select && [...select.options].some((option) => option.value === loaderVersion)) {
+      select.value = loaderVersion;
+    }
+  }
+  updateLoaderLabel();
+}
+
+function setLoaderVersionVisibility(visible) {
+  for (const selector of loaderVersionWraps) {
+    const wrap = $(selector);
+    if (wrap) wrap.hidden = !visible;
+  }
+}
+
+function renderLoaderVersions(versions, preferredVersion = '') {
+  const unique = [...new Map((versions || [])
+    .filter((entry) => entry?.version)
+    .map((entry) => [entry.version, entry])).values()];
+  const preferred = unique.find((entry) => entry.version === preferredVersion)?.version;
+  const stable = unique.find((entry) => entry.stable)?.version;
+  const selected = preferred || stable || unique[0]?.version || '';
+
+  for (const selector of loaderVersionSelectors) {
+    const select = $(selector);
+    if (!select) continue;
+    select.innerHTML = unique.length ? '' : '<option value="">No compatible versions found</option>';
+    for (const entry of unique) {
+      const option = document.createElement('option');
+      option.value = entry.version;
+      option.textContent = `${entry.version}${entry.stable ? ' · recommended' : ''}`;
+      select.append(option);
+    }
+    select.value = selected;
+  }
+  setLoaderVersionVisibility(true);
+  updateLoaderLabel();
+  return selected;
+}
+
+async function refreshLoaderVersions(preferredVersion = '') {
+  const loader = selectedLoaderType();
+  const requestId = ++state.loaderRequestId;
+  syncLoaderValues(loader, preferredVersion);
+  if (loader === 'vanilla') {
+    for (const selector of loaderVersionSelectors) {
+      const select = $(selector);
+      if (select) select.innerHTML = '<option value="">Not required</option>';
+    }
+    setLoaderVersionVisibility(false);
+    updateLoaderLabel();
+    return '';
+  }
+
+  const gameVersion = $('#ql-version')?.value || state.selectedVersionId || state.settings?.lastVersion || '';
+  if (!gameVersion) {
+    setLoaderVersionVisibility(true);
+    return '';
+  }
+
+  const cacheKey = `${loader}:${gameVersion}`;
+  if (state.loaderVersions[cacheKey]) {
+    return renderLoaderVersions(state.loaderVersions[cacheKey], preferredVersion || selectedLoaderVersion());
+  }
+
+  setLoaderVersionVisibility(true);
+  for (const selector of loaderVersionSelectors) {
+    const select = $(selector);
+    if (select) select.innerHTML = '<option value="">Loading compatible versions…</option>';
+  }
+  try {
+    const data = await api(`/api/loaders/versions?loader=${encodeURIComponent(loader)}&gameVersion=${encodeURIComponent(gameVersion)}`);
+    if (requestId !== state.loaderRequestId || loader !== selectedLoaderType()) return '';
+    state.loaderVersions[cacheKey] = data.versions || [];
+    if (data.error && !data.versions?.length) log(`${loader} metadata: ${data.error}`, 'error');
+    return renderLoaderVersions(data.versions || [], preferredVersion);
+  } catch (error) {
+    if (requestId === state.loaderRequestId) {
+      renderLoaderVersions([], '');
+      log(`Could not list ${loader} versions: ${error.message}`, 'error');
+    }
+    return '';
+  }
+}
+
+async function selectLoader(loader, preferredVersion = '') {
+  const normalized = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'].includes(loader)
+    ? loader
+    : 'vanilla';
+  for (const selector of loaderTypeSelectors) {
+    const select = $(selector);
+    if (select) select.value = normalized;
+  }
+  return refreshLoaderVersions(preferredVersion);
+}
+
+function syncSelectedLoaderVersion(version) {
+  for (const selector of loaderVersionSelectors) {
+    const select = $(selector);
+    if (select && [...select.options].some((option) => option.value === version)) select.value = version;
+  }
+  updateLoaderLabel();
+}
+
 // Settings
 async function loadSettings() {
   const { settings } = await api('/api/settings');
@@ -133,6 +267,7 @@ async function loadSettings() {
   syncMemorySliders(settings.memoryMb);
   $('#settings-java-path').value = settings.javaPath || '';
   if (settings.lastVersion && $('#ql-version')) $('#ql-version').value = settings.lastVersion;
+  await selectLoader(settings.loaderType || 'vanilla', settings.loaderVersion || '');
   const dataDirectory = $('#settings-data-dir');
   if (dataDirectory) dataDirectory.textContent = settings.gameDir || '—';
   const gameDirectory = $('#settings-game-dir');
@@ -146,6 +281,8 @@ async function saveSettings(extra = {}) {
     javaPath: $('#settings-java-path')?.value.trim() || '',
     lastVersion: $('#ql-version')?.value || state.settings?.lastVersion || '',
     lastAccountId: state.settings?.lastAccountId || '',
+    loaderType: selectedLoaderType(),
+    loaderVersion: selectedLoaderType() === 'vanilla' ? '' : selectedLoaderVersion(),
     ...extra,
   };
   const { settings } = await api('/api/settings', { method: 'POST', body });
@@ -476,6 +613,7 @@ async function loadVersions() {
   populateMcSelect();
   const count = $('#versions-count');
   if (count) count.textContent = state.versions.length;
+  await refreshLoaderVersions(state.settings?.loaderVersion || '');
   log(`Loaded ${state.versions.length} official versions from Mojang.`);
 }
 
@@ -534,6 +672,7 @@ function selectVersion(id, type = 'release') {
   $('#detail-ver').textContent = id;
   $('#detail-type').textContent = type;
   $('#detail-dir').textContent = state.settings?.gameDir || '—';
+  refreshLoaderVersions().catch(reportError);
 }
 
 function populateMcSelect() {
@@ -685,7 +824,12 @@ async function checkInstalled(versionId) {
   try {
     const result = await api('/api/check-installed', {
       method: 'POST',
-      body: { versionId, gameDir: state.settings?.gameDir },
+      body: {
+        versionId,
+        gameDir: state.settings?.gameDir,
+        loaderType: selectedLoaderType(),
+        loaderVersion: selectedLoaderVersion(),
+      },
     });
     return result;
   } catch {
@@ -1036,7 +1180,7 @@ function connectEvents() {
         $('#modal-status-text').textContent = event.message;
         break;
       case 'launch-start':
-        log(`Launching ${event.versionId} with ${event.java}`);
+        log(`Launching ${event.versionId} with ${event.loaderType && event.loaderType !== 'vanilla' ? `${event.loaderType} ${event.loaderVersion || ''}`.trim() : 'vanilla'} (${event.mainClass || 'Minecraft'}) using ${event.java}`);
         setBusy(false, 'Ready');
         hideModal();
         notify(`Minecraft ${event.versionId} is launching.`);
@@ -1050,11 +1194,17 @@ function connectEvents() {
 }
 
 function selectedPayload() {
+  const loaderType = selectedLoaderType();
   return {
     versionId: $('#ql-version')?.value || state.selectedVersionId || state.settings?.lastVersion || '',
     accountId: state.settings?.lastAccountId || '',
     memoryMb: memoryValue(),
     javaPath: $('#settings-java-path')?.value.trim() || '',
+    loaderType,
+    // Keep the legacy field for API clients built against the instance loader
+    // endpoints; the backend accepts both names.
+    loader: loaderType,
+    loaderVersion: loaderType === 'vanilla' ? '' : selectedLoaderVersion(),
   };
 }
 
@@ -1102,7 +1252,16 @@ function bindUi() {
   $('#ql-version')?.addEventListener('change', (event) => {
     $('#ql-launch').disabled = !event.target.value || state.downloadActive;
     state.selectedVersionId = event.target.value || state.selectedVersionId;
+    refreshLoaderVersions().catch(reportError);
   });
+  for (const selector of loaderTypeSelectors) {
+    $(selector)?.addEventListener('change', (event) => {
+      selectLoader(event.target.value).catch(reportError);
+    });
+  }
+  for (const selector of loaderVersionSelectors) {
+    $(selector)?.addEventListener('change', (event) => syncSelectedLoaderVersion(event.target.value));
+  }
   $('#ql-launch')?.addEventListener('click', async () => {
     const versionId = $('#ql-version')?.value;
     if (versionId) {

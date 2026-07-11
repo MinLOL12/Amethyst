@@ -1,8 +1,12 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const { isAllowedByRules, osMatches } = require('../src/launcher/rules');
 const { offlineUuid, validateUsername } = require('../src/launcher/accounts');
 const {
   buildLaunchCommand,
+  checkVersionInstalled,
   getLibraryDownloads,
   replacePlaceholders,
   legacySplitArguments
@@ -111,4 +115,66 @@ const java8PreferredRequirement = recommendedJavaRequirement({ id: '1.12.2', jav
 assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }, { path: 'java8', major: 8 }], java8PreferredRequirement).path, 'java8');
 assert.equal(selectCompatibleJava([{ path: 'java21', major: 21 }], java8PreferredRequirement).path, 'java21');
 
-console.log('All tests passed.');
+(async () => {
+  const gameDir = await fs.mkdtemp(path.join(os.tmpdir(), 'amethyst-check-'));
+  const versionId = '1.20.4';
+  const versionDir = path.join(gameDir, 'versions', versionId);
+  const librariesDir = path.join(gameDir, 'libraries');
+  const assetIndexPath = path.join(gameDir, 'assets', 'indexes', '1.20.json');
+  const assetHash = '00112233445566778899aabbccddeeff00112233';
+  const assetObjectPath = path.join(gameDir, 'assets', 'objects', assetHash.slice(0, 2), assetHash);
+  const libraryPath = path.join(librariesDir, 'com', 'example', 'demo', '1.0.0', 'demo-1.0.0.jar');
+  const nativesDir = path.join(versionDir, 'natives');
+  const nativeLibraryPath = path.join(librariesDir, 'com', 'example', 'native-demo', '1.0.0', 'native-demo-1.0.0-natives-linux.jar');
+
+  await fs.mkdir(versionDir, { recursive: true });
+  await fs.writeFile(path.join(versionDir, `${versionId}.json`), JSON.stringify({
+    id: versionId,
+    downloads: { client: { url: 'https://example.invalid/client.jar' } },
+    assetIndex: { id: '1.20', url: 'https://example.invalid/assets.json' },
+    libraries: [
+      { name: 'com.example:demo:1.0.0' },
+      {
+        name: 'com.example:native-demo:1.0.0',
+        downloads: {
+          classifiers: {
+            'natives-linux': {
+              path: 'com/example/native-demo/1.0.0/native-demo-1.0.0-natives-linux.jar',
+              url: 'https://example.invalid/native-demo.jar'
+            }
+          }
+        },
+        natives: { linux: 'natives-linux' }
+      }
+    ]
+  }));
+
+  const missingCheck = await checkVersionInstalled(versionId, { gameDir, concurrency: 2 });
+  assert.equal(missingCheck.installed, false);
+  assert.equal(missingCheck.missingCount > 0, true);
+
+  await fs.writeFile(path.join(versionDir, `${versionId}.jar`), 'client');
+  await fs.mkdir(path.dirname(libraryPath), { recursive: true });
+  await fs.writeFile(libraryPath, 'library');
+  await fs.mkdir(path.dirname(nativeLibraryPath), { recursive: true });
+  await fs.writeFile(nativeLibraryPath, 'native-archive');
+  await fs.mkdir(path.dirname(assetIndexPath), { recursive: true });
+  await fs.writeFile(assetIndexPath, JSON.stringify({
+    objects: {
+      'minecraft/sounds/dig/grass1.ogg': { hash: assetHash, size: 1 }
+    }
+  }));
+  await fs.mkdir(path.dirname(assetObjectPath), { recursive: true });
+  await fs.writeFile(assetObjectPath, 'a');
+  await fs.mkdir(nativesDir, { recursive: true });
+  await fs.writeFile(path.join(nativesDir, 'demo.dll'), 'native');
+
+  const installedCheck = await checkVersionInstalled(versionId, { gameDir, concurrency: 2 });
+  assert.equal(installedCheck.installed, true);
+  assert.equal(installedCheck.missingCount, 0);
+
+  console.log('All tests passed.');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

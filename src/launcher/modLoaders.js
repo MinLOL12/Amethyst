@@ -10,11 +10,96 @@ const { fetchJson, downloadFile, progressBus } = require('./downloader');
 const { getVersionMeta, artifactPathFromName } = require('./mojangApi');
 const { ensureDir, writeJson, readJson } = require('./store');
 const { gamePaths } = require('./minecraftPaths');
+const { runForgeInstaller, findInstalledLoaderVersion } = require('./forgeInstaller');
 
 const LOADERS = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'];
 
-async function listLoaderVersions(loader, gameVersion) {
+function normalizeLoader(loader) {
   const kind = String(loader || 'vanilla').toLowerCase();
+  if (!LOADERS.includes(kind)) throw new Error(`Unknown mod loader: ${loader}`);
+  return kind;
+}
+
+function normalizeForgeVersion(gameVersion, loaderVersion) {
+  const selected = String(loaderVersion || '');
+  return selected.startsWith(`${gameVersion}-`) ? selected : `${gameVersion}-${selected}`;
+}
+
+/** Return the version id produced by the official loader profile. */
+function loaderVersionId(loader, gameVersion, loaderVersion) {
+  const kind = normalizeLoader(loader);
+  const selected = String(loaderVersion || '');
+  if (kind === 'vanilla' || !selected) return gameVersion;
+  if (kind === 'fabric') return `fabric-loader-${selected}-${gameVersion}`;
+  if (kind === 'quilt') return `quilt-loader-${selected}-${gameVersion}`;
+  if (kind === 'forge') {
+    const forgeVersion = selected.startsWith(`${gameVersion}-`)
+      ? selected.slice(gameVersion.length + 1)
+      : selected;
+    return `${gameVersion}-forge-${forgeVersion}`;
+  }
+  return `neoforge-${selected}`;
+}
+
+function loaderMarker(kind) {
+  if (kind === 'fabric') return 'fabric';
+  if (kind === 'quilt') return 'quilt';
+  if (kind === 'forge') return 'forge';
+  if (kind === 'neoforge') return 'neoforge';
+  return '';
+}
+
+/**
+ * Find an installed loader profile instead of assuming an id. Forge and
+ * NeoForge ids have changed between installer generations, while Fabric and
+ * Quilt may also return a custom id from their profile API.
+ */
+async function findInstalledLoaderProfile(loader, gameVersion, loaderVersion, gameDir) {
+  const kind = normalizeLoader(loader);
+  if (kind === 'vanilla') return gameVersion;
+
+  const versionsDir = path.join(gameDir, 'versions');
+  const expected = loaderVersionId(kind, gameVersion, loaderVersion);
+  const entries = [];
+  try {
+    for (const entry of await fs.readdir(versionsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) entries.push(entry.name);
+    }
+  } catch (_) {
+    return null;
+  }
+
+  // Prefer the deterministic id when it exists.
+  entries.sort((a, b) => Number(b === expected) - Number(a === expected));
+  const marker = loaderMarker(kind);
+  const wantedVersion = String(loaderVersion || '').toLowerCase();
+
+  for (const id of entries) {
+    const meta = await readJson(path.join(versionsDir, id, `${id}.json`), null).catch(() => null);
+    if (!meta) continue;
+    const loaderLibraries = (meta.libraries || []).map((library) => library?.name || '').join(' ').toLowerCase();
+    const searchable = [
+      id,
+      meta.id,
+      meta.mainClass,
+      meta.inheritsFrom,
+      loaderLibraries
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (!searchable.includes(marker)) continue;
+    if (kind === 'forge' && searchable.includes('neoforge')) continue;
+    // Old Amethyst builds created a vanilla-mainClass Forge stub by merely
+    // extracting the installer. It looks like a loader profile by filename but
+    // cannot load mods and must be repaired by running the real installer.
+    if (meta.mainClass === 'net.minecraft.client.main.Main' && !loaderLibraries.includes(marker)) continue;
+    if (wantedVersion && !searchable.includes(wantedVersion)) continue;
+    if (gameVersion && meta.inheritsFrom && meta.inheritsFrom !== gameVersion && !searchable.includes(gameVersion.toLowerCase())) continue;
+    return id;
+  }
+  return null;
+}
+
+async function listLoaderVersions(loader, gameVersion) {
+  const kind = normalizeLoader(loader);
   if (kind === 'vanilla') return { loader: 'vanilla', versions: [{ version: 'vanilla', stable: true }] };
   if (!gameVersion) throw new Error('gameVersion is required for mod loader lookup');
 
@@ -142,7 +227,7 @@ async function listNeoForgeVersions(gameVersion) {
  * Install a mod loader profile into the shared versions folder and return the profile version id.
  */
 async function installLoader(loader, gameVersion, loaderVersion, options = {}) {
-  const kind = String(loader || 'vanilla').toLowerCase();
+  const kind = normalizeLoader(loader);
   if (kind === 'vanilla') {
     return { versionId: gameVersion, loader: 'vanilla' };
   }
@@ -211,12 +296,12 @@ async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) 
   const label = kind === 'neoforge' ? 'NeoForge' : 'Forge';
   progressBus.emitEvent('status', { message: `Preparing ${label} ${loaderVersion || ''} for ${gameVersion}…` });
 
-  let selected = loaderVersion;
+  let selected = String(loaderVersion || '');
   if (!selected) {
     const listed = kind === 'neoforge'
       ? await listNeoForgeVersions(gameVersion)
       : await listForgeVersions(gameVersion);
-    selected = listed.versions[0]?.version;
+    selected = listed.versions[0]?.version || '';
   }
   if (!selected) throw new Error(`No ${label} version available for Minecraft ${gameVersion}`);
 
@@ -366,6 +451,18 @@ async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) 
       };
     }
   }
+  if (!javaPath) throw new Error(`No compatible Java runtime found for the ${label} installer.`);
+
+  await runForgeInstaller({
+    javaPath,
+    installerPath,
+    gameDir,
+    cwd: cacheDir,
+    loader: kind,
+    loaderVersion: resolvedLoaderVersion,
+    minecraftVersion: gameVersion,
+    modpackName: options.name || options.modpackName || `Amethyst ${label} ${gameVersion}`
+  });
 
   // Fallback: extract version.json from the installer jar (works for older Forge).
   try {
@@ -527,6 +624,9 @@ async function extractZipEntries(filePath) {
 
 module.exports = {
   LOADERS,
+  normalizeLoader,
+  loaderVersionId,
+  findInstalledLoaderProfile,
   listLoaderVersions,
   installLoader,
   listFabricVersions,
