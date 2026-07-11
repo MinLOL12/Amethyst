@@ -7,12 +7,23 @@ const MOJANG_MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_mani
 const NEWS_URL = 'https://launchercontent.mojang.com/news.json';
 const RESOURCES_BASE_URL = 'https://resources.download.minecraft.net';
 
-// Public Xbox Live / Minecraft client id used by community launchers for device-code OAuth.
-// Override with AMETHYST_MS_CLIENT_ID if you register your own Azure application.
-const MS_CLIENT_ID = process.env.AMETHYST_MS_CLIENT_ID || '00000000402b5328';
-const MS_SCOPE = 'XboxLive.signin offline_access';
-const MS_DEVICE_CODE_URL = 'https://login.live.com/oauth20_connect.srf';
-const MS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf';
+// The Minecraft Launcher's public client is a legacy Microsoft-account app.  It
+// is registered on login.live.com, not in the Microsoft Entra "consumers"
+// tenant. Sending it to login.microsoftonline.com causes AADSTS700016.
+//
+// A launcher distributor should normally register and provide its own public
+// client with device-code support. A custom client defaults to the modern v2
+// consumer endpoints, which can also be overridden for sovereign clouds.
+const LEGACY_MINECRAFT_CLIENT_ID = '00000000402b5328';
+const MS_CLIENT_ID = process.env.AMETHYST_MS_CLIENT_ID || LEGACY_MINECRAFT_CLIENT_ID;
+const MS_SCOPE = process.env.AMETHYST_MS_SCOPE || 'XboxLive.signin offline_access';
+const usingCustomMicrosoftClient = Boolean(process.env.AMETHYST_MS_CLIENT_ID);
+const MS_DEVICE_CODE_URL = process.env.AMETHYST_MS_DEVICE_CODE_URL || (usingCustomMicrosoftClient
+  ? 'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode'
+  : 'https://login.live.com/oauth20_connect.srf');
+const MS_TOKEN_URL = process.env.AMETHYST_MS_TOKEN_URL || (usingCustomMicrosoftClient
+  ? 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token'
+  : 'https://login.live.com/oauth20_token.srf');
 
 const FABRIC_META_URL = 'https://meta.fabricmc.net/v2';
 const QUILT_META_URL = 'https://meta.quiltmc.org/v3';

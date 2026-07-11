@@ -39,7 +39,9 @@ Useful environment variables:
 AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
 AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
 PORT=8080 npm start                     # use a fixed local port
-AMETHYST_MS_CLIENT_ID=your-azure-app-id npm start  # optional OAuth client
+AMETHYST_MS_CLIENT_ID=your-entra-public-client-id npm start  # optional OAuth client
+# Optional with a custom sovereign-cloud/authority registration:
+AMETHYST_MS_DEVICE_CODE_URL=https://authority/devicecode AMETHYST_MS_TOKEN_URL=https://authority/token npm start
 ```
 
 The web UI is intentionally just the files in `public/`: it starts quickly,

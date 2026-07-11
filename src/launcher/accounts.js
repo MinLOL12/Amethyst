@@ -51,7 +51,14 @@ function publicAccount(account) {
 
 async function initializeStore() {
   const p = paths();
-  await ensureDir(p.root);
+  // Create launcher-owned roots at startup. This makes the on-disk layout
+  // predictable even before the first pack is created.
+  await Promise.all([
+    ensureDir(p.root),
+    ensureDir(path.join(p.root, 'modpacks')),
+    ensureDir(path.join(p.root, 'instances')),
+    ensureDir(path.join(p.root, 'minecraft'))
+  ]);
   const accounts = await readJson(p.accounts, []);
   const settings = await readSettings();
   return { accounts, settings };

@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { MS_CLIENT_ID, MS_SCOPE } = require('../config');
+const { MS_CLIENT_ID, MS_SCOPE, MS_DEVICE_CODE_URL, MS_TOKEN_URL } = require('../config');
 const { upsertMicrosoftAccount, getAccountRaw, updateAccountTokens, listAccountsRaw } = require('./accounts');
 const { progressBus } = require('./downloader');
 
@@ -77,18 +77,42 @@ async function getJson(url, headers = {}) {
  * Start Microsoft device-code login.
  * Returns user_code / verification_uri for the UI; polling continues in the background.
  */
-async function startDeviceLogin({ remember = true } = {}) {
-  const data = await postForm('https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode', {
+function deviceCodeFields(endpoint = MS_DEVICE_CODE_URL) {
+  const fields = { client_id: MS_CLIENT_ID, scope: MS_SCOPE };
+  // The legacy Live endpoint used by the official Minecraft client requires
+  // this field. The Entra v2 endpoint infers the device-code response type.
+  if (new URL(endpoint).hostname === 'login.live.com') fields.response_type = 'device_code';
+  return fields;
+}
+
+function deviceTokenFields(deviceCode) {
+  return {
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
     client_id: MS_CLIENT_ID,
-    scope: MS_SCOPE
-  });
+    device_code: deviceCode
+  };
+}
+
+async function startDeviceLogin({ remember = true } = {}) {
+  let data;
+  try {
+    data = await postForm(MS_DEVICE_CODE_URL, deviceCodeFields());
+  } catch (error) {
+    if (/AADSTS700016|application with identifier/i.test(error.message)) {
+      throw new Error('Microsoft rejected the OAuth application. The client ID was sent to the wrong authority; update Amethyst or configure AMETHYST_MS_CLIENT_ID for a public device-code app.');
+    }
+    throw error;
+  }
+  if (!data.device_code || !data.user_code) {
+    throw new Error('Microsoft did not return a device code. Check the configured Microsoft OAuth client and authority.');
+  }
 
   const loginId = crypto.randomUUID();
   const session = {
     loginId,
     deviceCode: data.device_code,
     userCode: data.user_code,
-    verificationUri: data.verification_uri || data.verification_uri_complete || 'https://www.microsoft.com/link',
+    verificationUri: data.verification_uri || data.verification_url || data.verification_uri_complete || 'https://www.microsoft.com/link',
     message: data.message,
     interval: Math.max(2, Number(data.interval) || 5),
     expiresAt: Date.now() + (Number(data.expires_in) || 900) * 1000,
@@ -124,11 +148,7 @@ async function pollDeviceLogin(session) {
     if (session.abort) break;
 
     try {
-      const token = await postForm('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        client_id: MS_CLIENT_ID,
-        device_code: session.deviceCode
-      });
+      const token = await postForm(MS_TOKEN_URL, deviceTokenFields(session.deviceCode));
       session.status = 'authenticating';
       progressBus.emitEvent('ms-login-progress', { loginId: session.loginId, status: 'authenticating' });
 
@@ -279,7 +299,7 @@ async function refreshMicrosoftAccount(accountId) {
   }
 
   progressBus.emitEvent('status', { message: `Refreshing Microsoft session for ${account.username}…` });
-  const token = await postForm('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
+  const token = await postForm(MS_TOKEN_URL, {
     grant_type: 'refresh_token',
     client_id: MS_CLIENT_ID,
     refresh_token: account.refreshToken,
@@ -385,5 +405,7 @@ module.exports = {
   ensureValidAccount,
   switchAccount,
   completeMicrosoftAuth,
-  listRememberedMicrosoftAccounts
+  listRememberedMicrosoftAccounts,
+  deviceCodeFields,
+  deviceTokenFields
 };

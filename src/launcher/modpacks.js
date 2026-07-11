@@ -10,15 +10,35 @@ try { ({ gamePaths } = require('./minecraftPaths')); } catch { ({ gamePaths } = 
 const { installVersion } = require('./minecraft');
 const { readSettings } = require('./accounts');
 const { pickJava, recommendedJavaRequirement } = require('./javaLocator');
-const { spawn } = require('node:child_process');
 const { runForgeInstaller, findInstalledLoaderVersion } = require('./forgeInstaller');
 
 function modpacksRoot() {
   return path.join(getDataRoot(), 'modpacks');
 }
-function modpackDir(id) { return path.join(modpacksRoot(), id); }
+function validatePackId(id) {
+  const value = String(id || '');
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(value)) throw new Error('Invalid modpack id');
+  return value;
+}
+function modpackDir(id) { return path.join(modpacksRoot(), validatePackId(id)); }
 function modpackJsonPath(id) { return path.join(modpackDir(id), 'modpack.json'); }
 function modpackGameDir(id) { return path.join(modpackDir(id), 'minecraft'); }
+function modsFolder(id) { return path.join(modpackGameDir(id), 'mods'); }
+
+async function ensurePackDirectories(id) {
+  const gameDir = modpackGameDir(id);
+  await Promise.all([
+    ensureDir(modpackDir(id)),
+    ensureDir(gameDir),
+    ensureDir(modsFolder(id)),
+    ensureDir(path.join(gameDir, 'config')),
+    ensureDir(path.join(gameDir, 'resourcepacks')),
+    ensureDir(path.join(gameDir, 'shaderpacks')),
+    ensureDir(path.join(gameDir, 'saves')),
+    ensureDir(path.join(gameDir, 'versions'))
+  ]);
+  return gameDir;
+}
 
 function slugify(name) {
   return String(name || 'modpack').toLowerCase().trim().replace(/[^a-z0-9_\-]+/g, '-').replace(/\-+/g, '-').replace(/^\-+|\-+$/g, '').slice(0,48) || 'modpack';
@@ -29,11 +49,23 @@ async function listModpacks() {
   const root=modpacksRoot(); await ensureDir(root);
   let entries=[]; try{ entries=await fs.readdir(root,{withFileTypes:true}); }catch{ return []; }
   const packs=[];
-  for(const ent of entries){ if(!ent.isDirectory()) continue; const p=path.join(root,ent.name,'modpack.json'); try{ const d=await readJson(p,null); if(d) packs.push(d);}catch{} }
+  for(const ent of entries){ if(!ent.isDirectory()) continue; try{ const d=await getModpack(ent.name); if(d) packs.push(d);}catch{} }
   packs.sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt));
   return packs;
 }
-async function getModpack(id){ const d=await readJson(modpackJsonPath(id),null); if(!d) throw new Error(`Modpack not found: ${id}`); return d; }
+async function getModpack(id){
+  const d=await readJson(modpackJsonPath(id),null);
+  if(!d) throw new Error(`Modpack not found: ${id}`);
+  await ensurePackDirectories(id);
+  const gameDir=modpackGameDir(id);
+  const modsDir=modsFolder(id);
+  if(d.gameDir!==gameDir||d.modsDir!==modsDir){
+    d.gameDir=gameDir;
+    d.modsDir=modsDir;
+    await writeJson(modpackJsonPath(id),d);
+  }
+  return d;
+}
 async function saveModpackFile(m){ m.updatedAt=new Date().toISOString(); await ensureDir(modpackDir(m.id)); await writeJson(modpackJsonPath(m.id),m); return m; }
 
 async function createModpack({ name, minecraftVersion, loader, loaderVersion, description }) {
@@ -43,13 +75,22 @@ async function createModpack({ name, minecraftVersion, loader, loaderVersion, de
   const valid=['vanilla','fabric','forge','neoforge','quilt'];
   if(!valid.includes(l)) l='vanilla';
   const id=newId(name); const now=new Date().toISOString();
-  const manifest={ id, name:name.trim(), description:description||'', minecraftVersion, loader:l, loaderVersion:loaderVersion||null, createdAt:now, updatedAt:now, mods:[], gameDir: modpackGameDir(id) };
-  await ensureDir(manifest.gameDir);
+  const gameDir = await ensurePackDirectories(id);
+  const manifest={ id, name:name.trim(), description:description||'', minecraftVersion, loader:l, loaderVersion:loaderVersion||null, createdAt:now, updatedAt:now, mods:[], gameDir, modsDir:modsFolder(id) };
   await saveModpackFile(manifest);
   return manifest;
 }
 async function deleteModpack(id){ await fs.rm(modpackDir(id),{recursive:true,force:true}); }
-async function updateModpack(id,patch){ const ex=await getModpack(id); const next={...ex,...patch,id:ex.id,updatedAt:new Date().toISOString()}; if(!patch.mods) next.mods=ex.mods; await writeJson(modpackJsonPath(id),next); return next; }
+async function updateModpack(id,patch){
+  const ex=await getModpack(id);
+  const next={...ex,...patch,id:ex.id,gameDir:modpackGameDir(ex.id),modsDir:modsFolder(ex.id),updatedAt:new Date().toISOString()};
+  // Mods are managed by the install/remove endpoints, never by an arbitrary
+  // metadata patch.
+  next.mods=ex.mods||[];
+  await ensurePackDirectories(id);
+  await writeJson(modpackJsonPath(id),next);
+  return next;
+}
 
 // Loader helpers — use config URLs if available
 function getFabricMeta(){ try{ return require('../config').FABRIC_META_URL || 'https://meta.fabricmc.net/v2'; }catch{ return 'https://meta.fabricmc.net/v2'; } }
@@ -103,7 +144,7 @@ async function fetchNeoForgeVersions(){
 
 async function installModpack(id, options={}){
   const manifest=await getModpack(id);
-  const gameDir=modpackGameDir(id);
+  const gameDir=await ensurePackDirectories(id);
   const mcVersion=manifest.minecraftVersion;
   const loader=manifest.loader;
   const loaderVersion=manifest.loaderVersion;
@@ -223,11 +264,25 @@ async function installModpack(id, options={}){
 }
 
 async function launchModpack(id, accountIdOrObj, options={}){
-  const manifest=await getModpack(id);
-  const gameDir=modpackGameDir(id);
+  let manifest=await getModpack(id);
+  const gameDir=await ensurePackDirectories(id);
+
+  // Never silently launch vanilla for a modded pack. If the user presses
+  // Launch before Install (or the loader profile was removed), install/repair
+  // the selected loader first so jars in mods/ are actually discovered.
+  let loaderProfileExists=false;
+  if(manifest.customVersionId){
+    try{
+      loaderProfileExists=(await fs.stat(path.join(gameDir,'versions',manifest.customVersionId,`${manifest.customVersionId}.json`))).isFile();
+    }catch{}
+  }
+  if(manifest.loader!=='vanilla'&&(!manifest.customVersionId||!loaderProfileExists)){
+    const installed=await installModpack(id,options);
+    manifest=installed.manifest;
+  }
+
   const versionToLaunch=manifest.customVersionId||manifest.minecraftVersion;
-  if(!versionToLaunch) throw new Error('Modpack not installed');
-  await ensureDir(path.join(gameDir,'mods'));
+  if(!versionToLaunch) throw new Error('Modpack has no Minecraft version configured');
 
   // Resolve account id to object if needed (main's launchVersion expects accountId string)
   let accountId='';
@@ -235,53 +290,58 @@ async function launchModpack(id, accountIdOrObj, options={}){
   else if(accountIdOrObj && accountIdOrObj.id) accountId=accountIdOrObj.id;
   else if(options.accountId) accountId=options.accountId;
 
-  if(manifest.loader==='fabric' || manifest.loader==='quilt'){
-    const customJsonPath=path.join(gameDir,'versions',versionToLaunch, `${versionToLaunch}.json`);
-    const customMeta=await readJson(customJsonPath,null);
-    if(!customMeta) throw new Error('Loader profile not installed. Install modpack first.');
-    // Use minecraft's buildLaunchCommand if available
-    try{
-      const { buildLaunchCommand } = require('./minecraft');
-      const settings=await readSettings();
-      let java=null;
-      try{ java=await require('./javaLocator').pickJava(null, options.javaPath||settings.javaPath); }catch{ try{ const jm=require('./javaManager'); const list=await jm.listAllJava(); java=list[0]; }catch{} }
-      if(!java) throw new Error('Java not found');
-      const paths=gamePaths(gameDir, versionToLaunch);
-      const { listAccounts } = require('./accounts');
-      const accounts=await listAccounts();
-      const account=accounts.find(a=>a.id===accountId) || accounts[0];
-      if(!account) throw new Error('No account');
-      const command=buildLaunchCommand(customMeta, paths, account, { ...settings, ...options, gameDir }, java.path);
-      progressBus.emitEvent('launch-start',{versionId:versionToLaunch, java:java.path});
-      await ensureDir(command.cwd);
-      const child=spawn(command.executable, command.args, { cwd:command.cwd, stdio:['ignore','pipe','pipe'], detached:false });
-      child.stdout.on('data', chunk=>progressBus.emitEvent('game-log',{stream:'stdout',message:chunk.toString()}));
-      child.stderr.on('data', chunk=>progressBus.emitEvent('game-log',{stream:'stderr',message:chunk.toString()}));
-      child.on('error', err=>progressBus.emitEvent('launch-error',{versionId:versionToLaunch,message:err.message}));
-      child.on('close',(code,signal)=>progressBus.emitEvent('launch-exit',{versionId:versionToLaunch,code,signal}));
-      return { pid:child.pid, java, versionId:versionToLaunch };
-    }catch(e){
-      // fallback to standard launchVersion which will attempt to use custom versionId
-      const { launchVersion } = require('./minecraft');
-      return launchVersion(versionToLaunch, accountId, { ...options, gameDir });
-    }
-  }
-
+  // Always use the normal launch pipeline. It resolves inheritsFrom metadata,
+  // picks the parent client jar, validates Microsoft sessions, and keeps the
+  // working directory on this pack. The old Fabric/Quilt shortcut launched
+  // the raw child profile with a non-existent child client jar.
   const { launchVersion } = require('./minecraft');
   return launchVersion(versionToLaunch, accountId, { ...options, gameDir });
 }
 
-function modsFolder(id){ return path.join(modpackGameDir(id),'mods'); }
-async function listMods(id){ const m=await getModpack(id); return m.mods||[]; }
+async function listMods(id){
+  const manifest=await getModpack(id);
+  await ensurePackDirectories(id);
+  return Promise.all((manifest.mods||[]).map(async (entry) => {
+    try {
+      const stat=await fs.stat(path.join(modsFolder(id),entry.fileName));
+      return {...entry,installed:stat.isFile()&&stat.size>0,sizeOnDisk:stat.size};
+    } catch {
+      return {...entry,installed:false,sizeOnDisk:0};
+    }
+  }));
+}
+
+function validatedModDownload(modInfo) {
+  const fileName=String(modInfo.fileName||'').trim();
+  if(!fileName || fileName!==path.basename(fileName) || /[\\/\0]/.test(fileName)) throw new Error('Invalid mod file name');
+  if(!/\.jar$/i.test(fileName)) throw new Error('Mods must be downloadable .jar files');
+  let fileUrl;
+  try { fileUrl=new URL(String(modInfo.fileUrl||'')); } catch { throw new Error('Invalid mod download URL'); }
+  if(fileUrl.protocol!=='https:') throw new Error('Mod download URLs must use HTTPS');
+  return {fileName,fileUrl:fileUrl.toString()};
+}
+
 async function addModToPack(id, modInfo){
   const manifest=await getModpack(id);
-  const modsDir=modsFolder(id); await ensureDir(modsDir);
-  const destPath=path.join(modsDir, modInfo.fileName);
-  await downloadFile(modInfo.fileUrl, destPath, { label:modInfo.fileName, size:modInfo.size });
-  const entry={ id:crypto.randomBytes(8).toString('hex'), source:modInfo.source, projectId:modInfo.projectId, projectSlug:modInfo.projectSlug||modInfo.projectId, title:modInfo.title||modInfo.fileName, versionId:modInfo.versionId, fileName:modInfo.fileName, fileUrl:modInfo.fileUrl, installedAt:new Date().toISOString() };
-  manifest.mods=(manifest.mods||[]).filter(m=>m.projectId!==entry.projectId);
+  await ensurePackDirectories(id);
+  const {fileName,fileUrl}=validatedModDownload(modInfo);
+  const modsDir=modsFolder(id);
+  const destPath=path.join(modsDir,fileName);
+  await downloadFile(fileUrl,destPath,{label:fileName,size:modInfo.size});
+  const downloaded=await fs.stat(destPath);
+  if(!downloaded.isFile()||downloaded.size===0) throw new Error(`Downloaded mod is empty: ${fileName}`);
+
+  const previous=(manifest.mods||[]).filter(m=>m.projectId===modInfo.projectId);
+  const entry={id:crypto.randomBytes(8).toString('hex'),source:modInfo.source,projectId:modInfo.projectId,projectSlug:modInfo.projectSlug||modInfo.projectId,title:modInfo.title||fileName,versionId:modInfo.versionId,fileName,fileUrl,installedAt:new Date().toISOString(),installed:true,sizeOnDisk:downloaded.size};
+  manifest.mods=(manifest.mods||[]).filter(m=>m.projectId!==entry.projectId&&m.fileName!==fileName);
   manifest.mods.push(entry);
   await saveModpackFile(manifest);
+
+  // Remove an older jar only after the replacement has downloaded and the
+  // manifest has been saved, so a failed update never leaves the pack empty.
+  for(const old of previous){
+    if(old.fileName!==fileName) await fs.rm(path.join(modsDir,old.fileName),{force:true}).catch(()=>{});
+  }
   return entry;
 }
 async function removeModFromPack(modpackId, modEntryId){
@@ -296,8 +356,9 @@ async function removeModFromPack(modpackId, modEntryId){
 }
 
 module.exports={
-  modpacksRoot, modpackDir, listModpacks, getModpack, createModpack, deleteModpack, updateModpack,
-  installModpack, launchModpack, listMods, addModToPack, removeModFromPack,
+  modpacksRoot, modpackDir, modpackGameDir, modsFolder, ensurePackDirectories, validatePackId,
+  listModpacks, getModpack, createModpack, deleteModpack, updateModpack,
+  installModpack, launchModpack, listMods, addModToPack, removeModFromPack, validatedModDownload,
   fetchFabricLoaderVersions, fetchFabricProfile, fetchQuiltLoaderVersions, fetchQuiltProfile,
   fetchForgeVersions, fetchForgePromotions, fetchNeoForgeVersions
 };

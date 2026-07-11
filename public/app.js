@@ -191,7 +191,7 @@ function renderAccounts() {
         <span class="account-status"><i class="account-status-dot"></i><span class="account-status-label">${status}</span></span>
       </div>
       <div class="account-actions">
-        ${isMicrosoft ? '<button class="button button-quiet skin-btn" type="button">Skin</button>' : ''}
+        <button class="button button-quiet skin-btn" type="button" title="${isMicrosoft ? 'Import and apply a custom skin' : 'Sign in with Microsoft to publish a custom skin'}">Skin</button>
         <button class="button button-subtle select-btn" type="button">${selected ? 'Selected' : 'Select'}</button>
         <button class="button button-quiet delete-btn" type="button" aria-label="Delete ${escapeHtml(account.username)}">×</button>
       </div>`;
@@ -242,7 +242,8 @@ function updateSelectedAccount() {
 function showMicrosoftModal() {
   $('#microsoft-modal').style.display = 'flex';
   $('#microsoft-login-message').textContent = 'Requesting a sign-in code…';
-  $('#microsoft-user-code').textContent = '••••••••';
+  $('#microsoft-user-code').textContent = 'Requesting…';
+  $('#microsoft-user-code').disabled = true;
   $('#microsoft-login-status').textContent = 'Connecting securely to Microsoft…';
   $('#microsoft-login-status').className = 'skin-status';
 }
@@ -264,8 +265,10 @@ async function startMicrosoftLogin() {
   showMicrosoftModal();
   try {
     const login = await api('/api/accounts/microsoft/start', { method: 'POST', body: { remember: true } });
+    if (!login.userCode) throw new Error('Microsoft did not provide a sign-in code.');
     state.microsoftLoginId = login.loginId;
     $('#microsoft-user-code').textContent = login.userCode;
+    $('#microsoft-user-code').disabled = false;
     $('#microsoft-login-link').href = login.verificationUri || 'https://www.microsoft.com/link';
     $('#microsoft-login-message').textContent = login.message || 'Open Microsoft sign-in and enter this one-time code.';
     $('#microsoft-login-status').textContent = 'Waiting for you to finish signing in…';
@@ -658,6 +661,7 @@ function showModpackDetail(mp) {
   $('#mp-set-loader').textContent = mp.loader;
   $('#mp-set-loader-ver').textContent = mp.loaderVersion || 'latest';
   $('#mp-set-dir').textContent = mp.gameDir || '—';
+  $('#mp-set-mods-dir').textContent = mp.modsDir || (mp.gameDir ? `${mp.gameDir.replace(/[\\/]$/, '')}/mods` : '—');
   $('#mp-set-custom').textContent = mp.customVersionId || 'not installed';
   loadModpackMods(mp.id);
 }
@@ -676,7 +680,7 @@ async function loadModpackMods(id) {
     for (const m of mods) {
       const row = document.createElement('div');
       row.className = 'mod-installed';
-      row.innerHTML = `<div style="flex:1; min-width:0"><div style="font-weight:600; font-size:.82rem">${escapeHtml(m.title||m.fileName)}</div><div class="muted" style="font-family:monospace; font-size:.68rem">${escapeHtml(m.fileName)} • ${escapeHtml(m.source)}</div></div><button class="button button-quiet" data-remove>Remove</button>`;
+      row.innerHTML = `<div style="flex:1; min-width:0"><div style="font-weight:600; font-size:.82rem">${escapeHtml(m.title||m.fileName)}</div><div class="muted" style="font-family:monospace; font-size:.68rem">${escapeHtml(m.fileName)} • ${escapeHtml(m.source)}${m.installed === false ? ' • MISSING FROM MODS FOLDER' : ''}</div></div><button class="button button-quiet" data-remove>Remove</button>`;
       row.querySelector('[data-remove]').addEventListener('click', async () => {
         if (!confirm(`Remove ${m.fileName}?`)) return;
         await api(`/api/modpacks/${encodeURIComponent(id)}/mods/${encodeURIComponent(m.id)}`, { method: 'DELETE' });
@@ -719,6 +723,23 @@ async function refreshLoaderVersions() {
   }
 }
 
+async function installModFile(packId, body, button, resultContainer) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Installing…';
+  try {
+    const { mod } = await api(`/api/modpacks/${encodeURIComponent(packId)}/mods`, { method:'POST', body });
+    await loadModpackMods(packId);
+    resultContainer.innerHTML = `<span style="color:var(--green)">Installed ${escapeHtml(mod.fileName)} in the pack's mods folder.</span>`;
+    notify(`${mod.title || mod.fileName} installed.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = original;
+    notify(error.message, 'error');
+    throw error;
+  }
+}
+
 async function doModSearch() {
   const query = $('#mp-search')?.value.trim() || '';
   const source = $('#mp-source')?.value || 'modrinth';
@@ -756,11 +777,11 @@ async function doModSearch() {
                 const file = ver.files?.find(f=>f.primary) || ver.files?.[0]; if (!file) continue;
                 const row = document.createElement('div'); row.className='mod-ver';
                 row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name||'')}</div><div class="muted" style="font-size:.6rem">${(ver.loaders||[]).join(', ')} · ${escapeHtml((ver.game_versions||[]).join(', ').slice(0,60))}</div></div><button class="button primary" style="min-height:28px; font-size:.68rem">Install</button>`;
-                row.querySelector('button').addEventListener('click', async () => {
+                row.querySelector('button').addEventListener('click', async (event) => {
                   const body = { source:'modrinth', projectId:hit.project_id, projectSlug:hit.slug||hit.project_id, title:hit.title, versionId:ver.id, fileName:file.filename, fileUrl:file.url, size:file.size };
-                  await api(`/api/modpacks/${encodeURIComponent(mpId)}/mods`, { method:'POST', body });
-                  loadModpackMods(mpId);
-                  versEl.innerHTML = '<span style="color:var(--green)">Installed</span>';
+                  await installModFile(mpId, body, event.currentTarget, versEl).catch((error) => {
+                    versEl.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+                  });
                 });
                 versEl.append(row);
               }
@@ -793,12 +814,12 @@ async function doModSearch() {
               for (const file of files.slice(0,10)) {
                 const row = document.createElement('div'); row.className='mod-ver';
                 row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(file.displayName)}</div><div class="muted" style="font-size:.6rem">${escapeHtml((file.gameVersions||[]).join(', '))}</div></div><button class="button primary" style="min-height:28px">Install</button>`;
-                row.querySelector('button').addEventListener('click', async () => {
+                row.querySelector('button').addEventListener('click', async (event) => {
                   if (!file.downloadUrl) { alert('No download URL (CurseForge may block). Try another file.'); return; }
                   const body = { source:'curseforge', projectId:String(mod.id), projectSlug:mod.slug||String(mod.id), title:mod.name, versionId:String(file.id), fileName:file.fileName, fileUrl:file.downloadUrl };
-                  await api(`/api/modpacks/${encodeURIComponent(mpId)}/mods`, { method:'POST', body });
-                  loadModpackMods(mpId);
-                  versEl.innerHTML='<span style="color:var(--green)">Installed</span>';
+                  await installModFile(mpId, body, event.currentTarget, versEl).catch((error) => {
+                    versEl.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+                  });
                 });
                 versEl.append(row);
               }
@@ -1006,7 +1027,9 @@ function bindUi() {
   $('#account-username')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') addAccount(); });
   $('#account-microsoft')?.addEventListener('click', () => startMicrosoftLogin());
   $('#microsoft-user-code')?.addEventListener('click', async () => {
-    const code = $('#microsoft-user-code').textContent;
+    const button = $('#microsoft-user-code');
+    const code = button.textContent.trim();
+    if (button.disabled || !/^[A-Z0-9-]{4,}$/i.test(code)) return;
     await navigator.clipboard?.writeText(code).catch(() => {});
     notify('Microsoft sign-in code copied.');
   });
