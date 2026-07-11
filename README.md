@@ -25,8 +25,13 @@ npm start
 ```
 
 Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
-your browser. If it does not open automatically, use the URL printed in the
-terminal.
+your browser. Browser mode is the default—no extra `server` flag is required.
+The terminal only hosts the local backend and must remain open while the
+launcher is running.
+
+Amethyst always prints the launcher URL on its own line. If the browser cannot
+be opened automatically (for example, over SSH or on a headless desktop), click
+or copy that URL into a browser.
 
 Useful environment variables:
 
