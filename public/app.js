@@ -135,6 +135,8 @@ async function loadSettings() {
   if (settings.lastVersion && $('#ql-version')) $('#ql-version').value = settings.lastVersion;
   const dataDirectory = $('#settings-data-dir');
   if (dataDirectory) dataDirectory.textContent = settings.gameDir || '—';
+  const gameDirectory = $('#settings-game-dir');
+  if (gameDirectory) gameDirectory.textContent = settings.gameDir || '—';
 }
 
 async function saveSettings(extra = {}) {
@@ -607,6 +609,90 @@ async function loadNews() {
   }
 }
 
+// ── Drive selection ─────────────────────────────────────────────────
+async function showDriveModal() {
+  const modal = $('#drive-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const list = $('#drive-list');
+  if (list) list.innerHTML = '<span class="muted">Loading drives…</span>';
+  try {
+    const { drives } = await api('/api/drives');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!drives.length) {
+      list.innerHTML = '<span class="muted">No drives detected.</span>';
+      return;
+    }
+    const currentDir = state.settings?.gameDir || '';
+    for (const drive of drives) {
+      const isCurrent = currentDir.startsWith(drive.path) || (drive.isDefault && !currentDir);
+      const item = document.createElement('div');
+      item.className = `drive-item${isCurrent ? ' current' : ''}`;
+      item.innerHTML = `
+        <div class="drive-item-icon">💾</div>
+        <div class="drive-item-info">
+          <span class="drive-item-label">${escapeHtml(drive.label)}</span>
+          <span class="drive-item-path">${escapeHtml(drive.path)}</span>
+          <span class="drive-item-space">${drive.freeFormatted} free / ${drive.totalFormatted} total</span>
+        </div>
+        <div class="drive-item-actions">
+          ${isCurrent ? '<span class="drive-current-badge">Current</span>' : '<button class="button primary" style="min-height:31px; font-size:.68rem">Select</button>'}
+        </div>`;
+      const selectBtn = item.querySelector('.button.primary');
+      if (selectBtn) {
+        selectBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await setGameDirectory(drive.path);
+        });
+      }
+      if (!isCurrent) {
+        item.addEventListener('click', () => setGameDirectory(drive.path));
+      }
+      list.append(item);
+    }
+  } catch (error) {
+    if (list) list.innerHTML = `<span class="muted">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function hideDriveModal() {
+  const modal = $('#drive-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function setGameDirectory(newDir) {
+  const separator = newDir.includes('\\') ? '\\' : '/';
+  const gameDir = newDir.endsWith(separator) ? newDir + 'amethyst' : newDir + separator + 'amethyst';
+  try {
+    const { settings } = await api('/api/settings', { method: 'POST', body: { ...state.settings, gameDir } });
+    state.settings = settings;
+    const gameDirectory = $('#settings-game-dir');
+    if (gameDirectory) gameDirectory.textContent = settings.gameDir || '—';
+    const dataDirectory = $('#settings-data-dir');
+    if (dataDirectory) dataDirectory.textContent = settings.gameDir || '—';
+    if ($('#detail-dir')) $('#detail-dir').textContent = settings.gameDir || '—';
+    hideDriveModal();
+    log(`Game directory set to: ${settings.gameDir}`);
+    notify(`Game files will download to: ${settings.gameDir}`);
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+// ── Check installed ────────────────────────────────────────────────
+async function checkInstalled(versionId) {
+  try {
+    const result = await api('/api/check-installed', {
+      method: 'POST',
+      body: { versionId, gameDir: state.settings?.gameDir },
+    });
+    return result;
+  } catch {
+    return { installed: false };
+  }
+}
+
 // ── Modpacks ───────────────────────────────────────────────────────
 async function loadModpacks() {
   try {
@@ -951,6 +1037,7 @@ function connectEvents() {
         break;
       case 'launch-start':
         log(`Launching ${event.versionId} with ${event.java}`);
+        setBusy(false, 'Ready');
         hideModal();
         notify(`Minecraft ${event.versionId} is launching.`);
         break;
@@ -976,6 +1063,16 @@ async function doInstall(versionId) {
   payload.versionId = versionId || payload.versionId;
   if (!payload.versionId) throw new Error('Choose a version first.');
   state.pendingVersionId = payload.versionId;
+
+  // Check if already installed — skip downloads and launch directly
+  const check = await checkInstalled(payload.versionId);
+  if (check.installed) {
+    log(`${payload.versionId} is already installed — launching directly.`);
+    setBusy(true, `Launching ${payload.versionId}…`);
+    await doLaunch(payload.versionId);
+    return;
+  }
+
   await saveSettings({ lastVersion: payload.versionId });
   await api('/api/install', { method: 'POST', body: payload });
 }
@@ -989,6 +1086,7 @@ async function doLaunch(versionId) {
   payload.accountId = account.id;
   state.pendingVersionId = payload.versionId;
   await saveSettings({ lastVersion: payload.versionId, lastAccountId: payload.accountId });
+  // Server will check install status and skip downloads if already installed
   await api('/api/launch', { method: 'POST', body: payload });
 }
 
@@ -1005,7 +1103,17 @@ function bindUi() {
     $('#ql-launch').disabled = !event.target.value || state.downloadActive;
     state.selectedVersionId = event.target.value || state.selectedVersionId;
   });
-  $('#ql-launch')?.addEventListener('click', () => doLaunch().catch(reportError));
+  $('#ql-launch')?.addEventListener('click', async () => {
+    const versionId = $('#ql-version')?.value;
+    if (versionId) {
+      const check = await checkInstalled(versionId);
+      if (check.installed) {
+        log(`${versionId} is already installed — launching directly.`);
+        setBusy(true, `Launching ${versionId}…`);
+      }
+    }
+    doLaunch().catch(reportError);
+  });
   $('#ql-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
 
   $('#versions-refresh')?.addEventListener('click', () => loadVersions().catch(reportError));
@@ -1019,7 +1127,15 @@ function bindUi() {
       renderVersionList();
     }
   }));
-  $('#detail-install')?.addEventListener('click', () => doInstall(state.selectedVersionId).catch(reportError));
+  $('#detail-install')?.addEventListener('click', async () => {
+    if (!state.selectedVersionId) return;
+    const check = await checkInstalled(state.selectedVersionId);
+    if (check.installed) {
+      log(`${state.selectedVersionId} is already installed — launching directly.`);
+      setBusy(true, `Launching ${state.selectedVersionId}…`);
+    }
+    doInstall(state.selectedVersionId).catch(reportError);
+  });
   $('#detail-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
 
   $('#accounts-refresh')?.addEventListener('click', () => loadAccounts().catch(reportError));
@@ -1051,6 +1167,15 @@ function bindUi() {
 
   $('#settings-save')?.addEventListener('click', () => saveSettings().then(() => notify('Settings saved.')).catch(reportError));
   $('#settings-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
+  $('#settings-change-dir')?.addEventListener('click', () => showDriveModal());
+  $('#drive-cancel')?.addEventListener('click', hideDriveModal);
+  $('#drive-modal-close')?.addEventListener('click', hideDriveModal);
+  $('#drive-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideDriveModal(); });
+  $('#drive-custom-select')?.addEventListener('click', async () => {
+    const customPath = $('#drive-custom-path')?.value.trim();
+    if (!customPath) return;
+    await setGameDirectory(customPath);
+  });
   $('#refresh-news')?.addEventListener('click', () => loadNews().catch(reportError));
 
   $('#modal-primary')?.addEventListener('click', () => {
@@ -1123,6 +1248,7 @@ function bindUi() {
       hideModal();
       hideModpackModal();
       hideSkinManager();
+      hideDriveModal();
       if ($('#microsoft-modal')?.style.display !== 'none') closeMicrosoftModal(true);
     }
   });
