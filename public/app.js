@@ -70,6 +70,16 @@ function setBusy(isBusy, label = 'Ready') {
   if (quickLaunch) quickLaunch.disabled = isBusy || !$('#ql-version')?.value;
 }
 
+// Page display labels for the sidebar navigation.
+// Declared so navigateTo can resolve and display the current page
+// without a "pageLabels is not defined" ReferenceError.
+const pageLabels = {
+  home: 'Home',
+  versions: 'Versions',
+  accounts: 'Accounts',
+  settings: 'Settings',
+};
+
 function navigateTo(page, updateHash = true) {
   if (!pageLabels[page]) page = 'home';
   state.currentPage = page;
