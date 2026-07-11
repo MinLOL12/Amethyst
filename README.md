@@ -1,157 +1,133 @@
 # Amethyst
 
-Amethyst is a **dark purple Minecraft vanilla launcher MVP** built with **Node.js** and native UI options. The launcher logic is in Node.js, but you can choose from multiple native UI frontends.
+Amethyst is a **dark purple Minecraft launcher** built with **Node.js** and optional native UI frontends. It supports Microsoft account login, multi-instance profiles, Fabric/Forge/NeoForge/Quilt, Java management, download queues, live logs, and official Mojang downloads.
 
 > Legal/download note: Amethyst does **not** include or redistribute Minecraft client code, libraries, assets, or copyrighted game files. When you install/launch a version, it reads Mojang's public version manifest and downloads the official files from Mojang/Microsoft-hosted URLs on the user's machine.
 
+## Features
+
+### Microsoft account login
+- Multiple Microsoft and offline accounts
+- Device-code OAuth (no embedded password form)
+- Remember login via refresh tokens
+- Switch accounts without reauthenticating when a session is stored
+
+### Installations / instances
+- Create multiple profiles with isolated game directories
+- Per-instance Java version and custom JVM arguments
+- Different Minecraft versions and loaders per instance
+
+### Mod loader support
+- Fabric
+- Forge
+- NeoForge
+- Quilt
+- Vanilla
+
+### Instance management
+- Duplicate
+- Rename
+- Delete
+- Export / import as ZIP
+
+### Java manager
+- Detect installed Java (`JAVA_HOME`, `PATH`, common locations)
+- Download the correct Temurin JDK automatically (Adoptium)
+- Choose which Java each installation uses
+
+### Downloads page
+- Progress bars
+- Download speed
+- Estimated time remaining
+- Queue multiple downloads
+
+### Game settings
+- RAM slider
+- Resolution width / height
+- Fullscreen toggle
+- Custom launch arguments and JVM arguments
+
+### News / home page
+- Minecraft news (Mojang launcher content)
+- Launcher updates blurb
+- Recently played instances
+- Quick launch
+
+### Logs
+- Live console while Minecraft starts
+- Search
+- Copy log
+- Browse and save crash reports
+
+### File browser shortcuts
+- Open `.minecraft` / instance root
+- Open saves
+- Open mods
+- Open screenshots
+- Open resource packs
+- Open logs / crash-reports
+
 ## UI Options
 
-Choose the UI that best fits your needs:
-
 ### 1. Browser UI (Default)
-The classic HTML/JS UI served locally. Works everywhere Node.js runs.
-
 ```bash
 npm start
 ```
 
 ### 2. Qt/QML UI (`qt-ui/`)
-**Best for: Native desktop feel with modern, beautiful UI**
-
-Built with Qt6 and QML - the same framework used by Prism Launcher. Provides:
-- Native window controls
-- Modern declarative UI with smooth animations
-- Excellent cross-platform support
-- Professional look and feel
-
-**Build and run (Python is not required):**
 ```bash
-# Linux/macOS
-./qt-ui/build.sh --run
-
-# Windows
-qt-ui\build.bat --run
-
-# Or on every platform, using the Node.js runtime already required by Amethyst
-npm run qt:run
+./qt-ui/build.sh --run   # Linux/macOS
+qt-ui\build.bat --run    # Windows
+npm run qt:run           # cross-platform helper
 ```
 
-The helper checks Node.js, CMake, and Qt, then configures and builds the native executable. See [`qt-ui/README.md`](qt-ui/README.md) for prerequisites and manual build instructions.
-
 ### 3. Tauri UI (`tauri-ui/`)
-**Best for: Small bundle size with native feel**
-
-Built with Tauri (Rust) - uses the system webview instead of bundled Chromium:
-- ~5-10 MB bundle vs ~150 MB for Electron
-- Native window decorations
-- Rust-powered backend management
-- System integration
-
-**Build:**
 ```bash
 cd tauri-ui
 npm install
-npm run tauri dev      # Development
-npm run tauri build    # Production build
+npm run tauri dev
 ```
-
-## Features
-
-- Offline-mode login for MVP accounts.
-- Saves accounts and settings locally in `~/.amethyst` (or `AMETHYST_HOME`).
-- Automatically scans installed Java from `JAVA_HOME`, `JRE_HOME`, `PATH`, and common install directories.
-- Downloads and launches official vanilla Minecraft versions from Mojang metadata.
-- Shows live download/install/launch progress through Server-Sent Events.
-- Downloads client jar, libraries, native libraries, asset index, and assets from official manifest URLs.
-- Memory allocation slider (`512 MB` to `16 GB`).
-- News panel loaded from Minecraft launcher content, with graceful offline fallback.
-- Dark purple responsive UI.
 
 ## Requirements
 
-- Node.js 18 or newer (for the backend).
-- Java is required to actually launch Minecraft. Amethyst will try to detect Java automatically; if it cannot, install Java or set a Java path override in the UI.
-- Internet access is needed for first-time version downloads/news/version list.
-- Native library extraction uses:
-  - `unzip` on Linux/macOS.
-  - PowerShell `Expand-Archive` on Windows.
+- Node.js 18+
+- Java to launch Minecraft (or let Amethyst download one)
+- Internet for first-time downloads, news, Microsoft login, and loader metadata
 
-### Qt UI Additional Requirements
-- Qt 6.5+ with modules: Core, Gui, Widgets, Qml, Quick, QuickControls2, Network
-- CMake 3.16+
-- C++20 compiler
-- Python is **not** required; the setup helper uses Node.js, which the launcher backend already requires.
-
-### Tauri UI Additional Requirements
-- Rust toolchain
-- WebView2 (Windows), WebKit (macOS/Linux)
-
-## Quick start (Browser UI)
+## Quick start
 
 ```bash
 npm start
 ```
 
-The backend binds to `127.0.0.1` on an available port and opens the UI in your browser. If the browser does not open automatically, copy the URL printed in the terminal.
-
-Useful environment variables:
+Environment variables:
 
 ```bash
-AMETHYST_HOME=/path/to/data npm start   # store accounts/settings/game files somewhere else
-AMETHYST_NO_OPEN=1 npm start            # do not auto-open a browser
-PORT=8080 npm start                     # choose a fixed local port
+AMETHYST_HOME=/path/to/data npm start
+AMETHYST_NO_OPEN=1 npm start
+PORT=8080 npm start
+AMETHYST_MS_CLIENT_ID=your-azure-app-id npm start   # optional custom OAuth client
 ```
 
-## File structure
+Data is stored under `~/.amethyst` (or `AMETHYST_HOME`):
 
 ```text
-Amethyst/
-├── LICENSE
-├── README.md
-├── package.json
-├── .gitignore
-├── public/                    # Browser UI assets
-│   ├── index.html
-│   ├── styles.css
-│   └── app.js
-├── qt-ui/                     # Qt/QML UI (C++)
-│   ├── CMakeLists.txt
-│   ├── src/
-│   └── qml/
-├── tauri-ui/                  # Tauri UI (Rust + HTML)
-│   ├── package.json
-│   ├── src-tauri/
-│   └── src/
-├── src/                       # Shared backend (Node.js)
-│   ├── main.js
-│   ├── server.js
-│   ├── config.js
-│   └── launcher/
-│       ├── accounts.js
-│       ├── downloader.js
-│       ├── javaLocator.js
-│       ├── minecraft.js
-│       ├── mojangApi.js
-│       ├── news.js
-│       ├── os.js
-│       ├── rules.js
-│       └── store.js
-└── test/
-    └── rules.test.js
+~/.amethyst/
+├── accounts.json          # accounts (tokens for remembered Microsoft logins)
+├── settings.json
+├── instances.json
+├── instances/<name>/      # per-profile game directories
+├── java/                  # managed JDK downloads
+├── minecraft/             # shared/default game files when not using instances
+├── logs/
+└── exports/
 ```
 
-## How official version downloads work
+## Microsoft login notes
 
-1. `src/launcher/mojangApi.js` fetches Mojang's version manifest from `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`.
-2. The selected version's metadata is fetched from the official URL in that manifest.
-3. `src/launcher/minecraft.js` downloads:
-   - the official client jar from `version.downloads.client.url`,
-   - allowed libraries from `library.downloads.artifact.url`,
-   - OS-specific native library jars from `library.downloads.classifiers`,
-   - the asset index from `version.assetIndex.url`,
-   - asset objects from `https://resources.download.minecraft.net/<prefix>/<hash>`.
-4. SHA-1 checksums from Mojang metadata are verified where provided.
-5. Launch arguments are built from Mojang's `arguments`/legacy metadata using the offline account values.
+Amethyst uses the Microsoft **device code** flow, then Xbox Live → XSTS → Minecraft Services profile lookup. Refresh tokens are stored only when **Remember login** is enabled so you can switch accounts without signing in again.
+
+You must own Minecraft Java Edition on the Microsoft account. Offline accounts remain available for single-player / offline servers.
 
 ## Development checks
 
@@ -159,8 +135,33 @@ Amethyst/
 npm test
 ```
 
-## MVP limitations
+## File structure
 
-- Authentication is offline-mode only. Online Microsoft authentication is intentionally out of scope for the MVP.
-- Multiplayer servers that require authenticated Microsoft sessions will not accept offline accounts.
-- The launcher downloads official files but does not grant a Minecraft license. Users must comply with Minecraft's EULA and applicable terms.
+```text
+Amethyst/
+├── public/                 # Browser UI
+├── src/
+│   ├── main.js
+│   ├── server.js
+│   ├── config.js
+│   └── launcher/
+│       ├── accounts.js
+│       ├── microsoftAuth.js
+│       ├── instances.js
+│       ├── modLoaders.js
+│       ├── javaManager.js
+│       ├── javaLocator.js
+│       ├── downloadQueue.js
+│       ├── downloader.js
+│       ├── minecraft.js
+│       ├── logs.js
+│       ├── folders.js
+│       └── ...
+├── qt-ui/
+├── tauri-ui/
+└── test/
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
