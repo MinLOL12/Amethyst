@@ -790,7 +790,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
   if (instance) await touchPlayed(instance.id);
 
   const command = buildLaunchCommand(install.versionMeta, install.paths, authAccount, launchSettings, java.path, java.major);
-  progressBus.emitEvent('launch-start', {
+  const launchEvent = {
     versionId: install.versionId,
     baseVersionId,
     loader: selection.loader,
