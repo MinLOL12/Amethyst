@@ -9,7 +9,6 @@
     {
       "name": "default",
       "displayName": "Default Release Build",
-      "description": "Release build using the system Qt6 installation",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -19,17 +18,10 @@
     {
       "name": "debug",
       "displayName": "Debug Build",
-      "description": "Debug build with full symbols",
       "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
-    },
-    {
-      "name": "dev",
-      "displayName": "Developer Build",
-      "description": "Debug build with assertions enabled",
-      "inherits": "debug"
     }
   ],
   "buildPresets": [

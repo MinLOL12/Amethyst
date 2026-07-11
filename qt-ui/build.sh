@@ -1,9 +1,6 @@
-#!/usr/bin/env bash
-# One-liner wrapper for Linux/macOS.
-# It runs the Python installer which downloads Qt6/CMake if needed and builds the UI.
-set -euo pipefail
+#!/usr/bin/env sh
+# Python-free Qt UI setup/build wrapper for Linux and macOS.
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-cd "$SCRIPT_DIR"
-python3 install.py "$@"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$SCRIPT_DIR/install.js" "$@"

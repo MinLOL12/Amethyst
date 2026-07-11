@@ -117,14 +117,28 @@ void AmaranthLauncher::startBackend()
 
     qDebug() << "Starting backend with Node.js:" << nodePath;
     qDebug() << "Script:" << serverScript;
-    qDebug() << "Backend port:" << port;
+    
+    // Reserve an available loopback port, then give it to both the backend and
+    // API client. The backend normally chooses a random port, which the native
+    // UI would otherwise have no reliable way to discover.
+    QTcpServer portProbe;
+    if (!portProbe.listen(QHostAddress::LocalHost, 0)) {
+        showError("Startup Error", "Could not reserve a local port for the launcher backend.");
+        return;
+    }
+    const quint16 backendPort = portProbe.serverPort();
+    portProbe.close();
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("AMETHYST_NO_OPEN", "1");
-    env.insert("PORT", QString::number(port));
+    env.insert("PORT", QString::number(backendPort));
     m_backendProcess->setProcessEnvironment(env);
-    m_backendProcess->setWorkingDirectory(projectRoot);
+    m_backendProcess->setWorkingDirectory(appPath);
+    if (m_apiClient) {
+        m_apiClient->setBaseUrl(QString("http://127.0.0.1:%1").arg(backendPort));
+    }
 
+    // Start Node.js with the main script.
     m_backendProcess->start(nodePath, QStringList() << serverScript);
 }
 
@@ -180,7 +194,24 @@ QString AmaranthLauncher::findNodeExecutable() const
 
 QString AmaranthLauncher::getAppPath() const
 {
-    // Get the directory where the Qt application is located
+    // Development builds live in qt-ui/build (or qt-ui/build/<config> on
+    // multi-config generators), while packaged builds may place the executable
+    // beside the backend. Search upwards rather than assuming one layout.
+    QDir directory(QApplication::applicationDirPath());
+    for (int depth = 0; depth < 5; ++depth) {
+        if (QFileInfo::exists(directory.filePath("src/main.js"))) {
+            return directory.absolutePath();
+        }
+        if (!directory.cdUp()) {
+            break;
+        }
+    }
+
+    // Also support launching a development binary from the project root.
+    QDir current(QDir::currentPath());
+    if (QFileInfo::exists(current.filePath("src/main.js"))) {
+        return current.absolutePath();
+    }
     return QApplication::applicationDirPath();
 }
 
@@ -217,7 +248,11 @@ void AmaranthLauncher::onBackendStarted()
     
     // Give the backend a moment to start
     QTimer::singleShot(500, this, [this]() {
-        // Refresh data from API
+        // Open the event stream before loading initial data so progress and
+        // backend status updates reach the native UI.
+        if (m_apiClient) {
+            m_apiClient->connectToBackend();
+        }
         refreshVersions();
         refreshJava();
         refreshAccounts();

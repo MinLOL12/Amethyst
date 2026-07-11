@@ -63,77 +63,87 @@ If you already have Qt6 and CMake installed:
 
 ### Prerequisites
 
-- **Qt 6.5+** with modules: Core, Gui, Widgets, Qml, Quick, QuickControls2, Network
+- **Node.js 18+** (also used by the launcher backend)
+- **Qt 6.5+**
 - **CMake 3.16+**
 - **C++20 compatible compiler**
   - GCC 11+
   - Clang 14+
   - MSVC 2022+
 
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt install qt6-base-dev qt6-qmltooling qtdeclarative6-dev cmake build-essential
-```
+**Python is not required.** The included setup helper is written in Node.js and
+uses only built-in Node modules.
 
-**macOS (Homebrew):**
-```bash
-brew install qt6 cmake
-```
+### Install Qt and CMake
 
 **Windows:**
-Download Qt from https://www.qt.io/download or use the one-command installer above.
 
-### Build
+Install CMake with `winget install Kitware.CMake` and download Qt 6.5+ from
+https://www.qt.io/download. If Qt is not on the normal CMake search path, pass
+its compiler-specific prefix with `--qt-dir`, for example:
 
-```bash
-cd qt-ui
-cmake --preset default
-cmake --build build --parallel
+```bat
+qt-ui\build.bat --qt-dir C:\Qt\6.8.0\msvc2022_64 --run
 ```
 
-Or the classic way:
+**Linux (Ubuntu/Debian):**
+
 ```bash
-cd qt-ui
-mkdir build && cd build
-cmake ..
-cmake --build . --parallel
+sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick-controls cmake build-essential
 ```
 
-### Run
+Package names can differ by distribution.
+
+**macOS (Homebrew):**
 
 ```bash
-# From the build directory
-./Amethyst
+brew install qt@6 cmake
+```
 
-# Or from the project root (after build)
+### One-command setup, build, and run
+
+From the project root:
+
+```bash
+# Linux/macOS
+./qt-ui/build.sh --run
+
+# Windows
+qt-ui\build.bat --run
+```
+
+The same helper can be called directly on every platform:
+
+```bash
+node qt-ui/install.js --run
+# or
+npm run qt:run
+```
+
+Useful options include `--clean`, `--build-type Debug`, `--qt-dir <path>`,
+`--jobs <count>`, and `--configure-only`. Run `node qt-ui/install.js --help`
+for the complete list.
+
+### Manual build
+
+If you prefer to invoke CMake yourself:
+
+```bash
+cmake -S qt-ui -B qt-ui/build -DCMAKE_BUILD_TYPE=Release
+cmake --build qt-ui/build --config Release --parallel
 ./qt-ui/build/Amethyst
 ```
 
-## Troubleshooting
-
-### Qt6 not found
-Run the installer instead of CMake directly, or point CMake at your Qt install:
-```bash
-cmake -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/<arch> -S qt-ui -B qt-ui/build
-```
-
-### Downloads fail while installing a Minecraft version
-The backend now automatically retries failed HTTP requests with exponential
-backoff. If a download keeps failing, check your internet connection or try a
-different network.
-
-### Backend connection errors
-The Qt app starts the Node.js backend automatically and finds a free port. Make
-sure Node.js 18+ is installed and on PATH.
+On Windows, the executable may be at `qt-ui\build\Release\Amethyst.exe`.
 
 ## Architecture
 
 ```
 qt-ui/
 ├── CMakeLists.txt          # CMake build configuration
-├── CMakePresets.json       # Ready-to-use CMake presets
-├── install.py              # One-command installer/downloader
-├── build.sh / build.bat    # Thin wrapper scripts
+├── CMakePresets.json       # Release and debug CMake presets
+├── install.js              # Python-free setup/build/run helper
+├── build.sh / build.bat    # Platform-friendly wrappers
 ├── src/
 │   ├── main.cpp             # Application entry point
 │   ├── amaranthlauncher.h   # Main window controller

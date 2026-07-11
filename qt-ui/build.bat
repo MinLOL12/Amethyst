@@ -1,7 +1,5 @@
 @echo off
-rem One-liner wrapper for Windows.
-rem It runs the Python installer which downloads Qt6/CMake if needed and builds the UI.
+rem Python-free Qt UI setup/build wrapper for Windows.
 setlocal
-
-cd /d "%~dp0"
-python install.py %*
+node "%~dp0install.js" %*
+exit /b %errorlevel%
