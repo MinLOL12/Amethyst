@@ -790,7 +790,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
   if (instance) await touchPlayed(instance.id);
 
   const command = buildLaunchCommand(install.versionMeta, install.paths, authAccount, launchSettings, java.path, java.major);
-  progressBus.emitEvent('launch-start', {
+  const launchEvent = {
     versionId: install.versionId,
     baseVersionId,
     loader: selection.loader,
@@ -801,7 +801,8 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     java: java.path,
     requiredMajor,
     commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...`
-  });
+  };
+  progressBus.emitEvent('launch-start', launchEvent);
   appendLog({
     stream: 'info',
     message: `Spawn: ${command.executable} (cwd=${command.cwd})`,
