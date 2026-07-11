@@ -9,6 +9,7 @@ const { isAllowedByRules } = require('./rules');
 const { minecraftOsName, classpathSeparator } = require('./os');
 const { pickJava, recommendedJavaMajor } = require('./javaLocator');
 const { readSettings, saveSettings, touchAccount } = require('./accounts');
+const { getModLoaderProfile, mergeModLoaderProfile } = require('./modloaders');
 
 function gamePaths(gameDir, versionId) {
   return {
@@ -21,7 +22,8 @@ function gamePaths(gameDir, versionId) {
     assets: path.join(gameDir, 'assets'),
     assetIndexes: path.join(gameDir, 'assets', 'indexes'),
     assetObjects: path.join(gameDir, 'assets', 'objects'),
-    natives: path.join(gameDir, 'versions', versionId, 'natives')
+    natives: path.join(gameDir, 'versions', versionId, 'natives'),
+    mods: path.join(gameDir, 'mods')
   };
 }
 
@@ -209,38 +211,58 @@ async function installVersion(versionId, options = {}) {
   const settings = await readSettings();
   const gameDir = options.gameDir || settings.gameDir;
   const concurrency = Number(options.concurrency || settings.maxConcurrentDownloads || 8);
+  const modLoader = options.modLoader || null; // { type: 'fabric'|'forge'|'neoforge'|'quilt', version: '...' }
   const paths = gamePaths(gameDir, versionId);
 
-  progressBus.emitEvent('install-start', { versionId, gameDir });
-  await ensureDir(paths.versionDir);
-  await ensureDir(paths.libraries);
-  await ensureDir(paths.assetObjects);
-  await ensureDir(paths.natives);
+  const effectiveVersionId = modLoader ? `${versionId}-${modLoader.type}-${modLoader.version}` : versionId;
+  const effectivePaths = modLoader ? gamePaths(gameDir, effectiveVersionId) : paths;
 
-  const versionMeta = await getVersionMeta(versionId);
-  await writeJson(paths.versionJson, versionMeta);
+  progressBus.emitEvent('install-start', { versionId, gameDir, modLoader });
+  await ensureDir(effectivePaths.versionDir);
+  await ensureDir(effectivePaths.libraries);
+  await ensureDir(effectivePaths.assetObjects);
+  await ensureDir(effectivePaths.natives);
 
-  if (!versionMeta.downloads?.client?.url) throw new Error(`Minecraft ${versionId} does not expose a downloadable client jar.`);
-  await downloadFile(versionMeta.downloads.client.url, paths.clientJar, {
-    sha1: versionMeta.downloads.client.sha1,
-    size: versionMeta.downloads.client.size,
+  // Ensure mods directory exists when using a mod loader
+  if (modLoader) {
+    await ensureDir(effectivePaths.mods);
+  }
+
+  // Always install the vanilla base version first (for assets and client jar)
+  const vanillaMeta = await getVersionMeta(versionId);
+
+  // If a mod loader is requested, fetch its profile and merge with vanilla
+  let versionMeta = vanillaMeta;
+  if (modLoader) {
+    progressBus.emitEvent('status', { message: `Fetching ${modLoader.type} ${modLoader.version} profile` });
+    const modLoaderProfile = await getModLoaderProfile(modLoader.type, versionId, modLoader.version);
+    versionMeta = mergeModLoaderProfile(modLoaderProfile, vanillaMeta);
+  }
+
+  await writeJson(effectivePaths.versionJson, versionMeta);
+
+  if (!vanillaMeta.downloads?.client?.url) throw new Error(`Minecraft ${versionId} does not expose a downloadable client jar.`);
+  await downloadFile(vanillaMeta.downloads.client.url, effectivePaths.clientJar, {
+    sha1: vanillaMeta.downloads.client.sha1,
+    size: vanillaMeta.downloads.client.size,
     label: `Minecraft ${versionId} client`
   });
 
-  const { downloads, natives } = getLibraryDownloads(versionMeta, paths);
+  // Download all libraries (vanilla + mod loader merged)
+  const { downloads, natives } = getLibraryDownloads(versionMeta, effectivePaths);
   progressBus.emitEvent('status', { message: `Downloading ${downloads.length} libraries` });
   await mapLimit(downloads, concurrency, (download) => downloadFile(download.url, download.destination, download));
 
   if (natives.length) {
     progressBus.emitEvent('status', { message: `Extracting ${natives.length} native libraries` });
-    await fs.rm(paths.natives, { recursive: true, force: true });
-    await ensureDir(paths.natives);
-    for (const item of natives) await extractNativeJar(item.jar, paths.natives);
+    await fs.rm(effectivePaths.natives, { recursive: true, force: true });
+    await ensureDir(effectivePaths.natives);
+    for (const item of natives) await extractNativeJar(item.jar, effectivePaths.natives);
   }
 
-  await downloadAssets(versionMeta, paths, concurrency);
-  progressBus.emitEvent('install-complete', { versionId, gameDir });
-  return { versionMeta, paths };
+  await downloadAssets(vanillaMeta, effectivePaths, concurrency);
+  progressBus.emitEvent('install-complete', { versionId: effectiveVersionId, gameDir, modLoader });
+  return { versionMeta, paths: effectivePaths, versionId: effectiveVersionId };
 }
 
 function addArgument(output, value, replacements) {
@@ -352,7 +374,12 @@ async function launchVersion(versionId, account, options = {}) {
 
   await touchAccount(account.id || account.uuid);
   const command = buildLaunchCommand(install.versionMeta, install.paths, account, nextSettings, java.path);
-  progressBus.emitEvent('launch-start', { versionId, java: java.path, requiredMajor, commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...` });
+  progressBus.emitEvent('launch-start', {
+    versionId: install.versionId,
+    java: java.path,
+    requiredMajor,
+    commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...`
+  });
 
   await ensureDir(command.cwd);
   const child = spawn(command.executable, command.args, {
@@ -363,10 +390,10 @@ async function launchVersion(versionId, account, options = {}) {
 
   child.stdout.on('data', (chunk) => progressBus.emitEvent('game-log', { stream: 'stdout', message: chunk.toString() }));
   child.stderr.on('data', (chunk) => progressBus.emitEvent('game-log', { stream: 'stderr', message: chunk.toString() }));
-  child.on('error', (error) => progressBus.emitEvent('launch-error', { versionId, message: error.message }));
-  child.on('close', (code, signal) => progressBus.emitEvent('launch-exit', { versionId, code, signal }));
+  child.on('error', (error) => progressBus.emitEvent('launch-error', { versionId: install.versionId, message: error.message }));
+  child.on('close', (code, signal) => progressBus.emitEvent('launch-exit', { versionId: install.versionId, code, signal }));
 
-  return { pid: child.pid, java, versionId };
+  return { pid: child.pid, java, versionId: install.versionId };
 }
 
 module.exports = {

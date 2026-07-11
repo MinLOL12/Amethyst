@@ -61,6 +61,7 @@ npm run tauri build    # Production build
 - Saves accounts and settings locally in `~/.amethyst` (or `AMETHYST_HOME`).
 - Automatically scans installed Java from `JAVA_HOME`, `JRE_HOME`, `PATH`, and common install directories.
 - Downloads and launches official vanilla Minecraft versions from Mojang metadata.
+- **Mod loader support: Fabric, Forge, NeoForge, and Quilt.** Select a mod loader and version from the UI, then drop mods into the `mods` folder.
 - Shows live download/install/launch progress through Server-Sent Events.
 - Downloads client jar, libraries, native libraries, asset index, and assets from official manifest URLs.
 - Memory allocation slider (`512 MB` to `16 GB`).
@@ -131,6 +132,7 @@ Amethyst/
 │       ├── downloader.js
 │       ├── javaLocator.js
 │       ├── minecraft.js
+│       ├── modloaders.js
 │       ├── mojangApi.js
 │       ├── news.js
 │       ├── os.js
@@ -152,6 +154,31 @@ Amethyst/
    - asset objects from `https://resources.download.minecraft.net/<prefix>/<hash>`.
 4. SHA-1 checksums from Mojang metadata are verified where provided.
 5. Launch arguments are built from Mojang's `arguments`/legacy metadata using the offline account values.
+
+## Mod loader support
+
+Amethyst supports the following mod loaders:
+
+| Mod loader | API source | Notes |
+|------------|-----------|-------|
+| **Fabric** | `meta.fabricmc.net` | Lightweight mod loader; fetches profile JSON with libraries and main class |
+| **Forge** | `maven.minecraftforge.net` | Fetches Forge profile JSON with libraries and launch config |
+| **NeoForge** | `maven.neoforged.net` | Modern fork of Forge for 1.20.1+ |
+| **Quilt** | `meta.quiltmc.org` | Fabric-compatible fork with additional features |
+
+### How it works
+
+1. The user selects a Minecraft version and a mod loader type in the UI.
+2. Amethyst fetches the available loader versions from the mod loader's API.
+3. When installing, the vanilla base version is downloaded first, then the mod loader's profile JSON is fetched and merged with the vanilla metadata (libraries, main class, arguments).
+4. The mod loader's additional libraries are downloaded from their respective Maven repositories.
+5. A `mods` directory is created in the game directory.
+6. On launch, the mod loader's main class is used instead of vanilla's, and the merged classpath includes both vanilla and mod loader libraries.
+7. The mod loader automatically scans the `mods` directory for `.jar` mod files at startup.
+
+### Where to put mods
+
+Mods go in the `mods` folder inside the game directory (default: `~/.amethyst/minecraft/mods`). The game directory path is shown in the top bar of the launcher UI.
 
 ## Development checks
 

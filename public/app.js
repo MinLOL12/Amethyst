@@ -15,6 +15,11 @@ const state = {
   selectedVersionType: 'release',
   filterType: 'all',
   filterText: '',
+  // Mod loader state
+  modLoaderType: '',        // '', 'fabric', 'forge', 'neoforge', 'quilt'
+  modLoaderVersion: '',     // specific loader version string
+  modLoaderVersions: [],    // available versions for the selected loader
+  modLoaderLoading: false,
 }
 
 // ── Utilities ──────────────────────────────────────────────────────
@@ -291,6 +296,12 @@ function selectVersion(id, type) {
   state.selectedVersionId = id;
   state.selectedVersionType = type || 'release';
 
+  // Reset mod loader state when switching versions
+  state.modLoaderType = '';
+  state.modLoaderVersion = '';
+  state.modLoaderVersions = [];
+  syncModLoaderUi();
+
   // Update list selection
   $$('.version-item').forEach((item) => {
     const name = item.querySelector('.version-name');
@@ -314,6 +325,95 @@ function selectVersion(id, type) {
   $('#detail-ver').textContent = id;
   $('#detail-type').textContent = type || '—';
   $('#detail-dir').textContent = state.settings?.gameDir || '—';
+
+  // Reset detail mod loader selectors
+  const detailModType = $('#detail-modloader-type');
+  if (detailModType) detailModType.value = '';
+  const detailModVer = $('#detail-modloader-version');
+  if (detailModVer) detailModVer.innerHTML = '<option value="">Select loader version...</option>';
+  updateDetailModLoaderVisibility();
+}
+
+// ── Mod Loader ────────────────────────────────────────────────────
+async function loadModLoaderVersions(mcVersion, loaderType) {
+  if (!mcVersion || !loaderType) {
+    state.modLoaderVersions = [];
+    return;
+  }
+
+  state.modLoaderLoading = true;
+  const versionSelect = $('#ql-modloader-version');
+  const detailVersionSelect = $('#detail-modloader-version');
+  if (versionSelect) versionSelect.innerHTML = '<option value="">Loading...</option>';
+  if (detailVersionSelect) detailVersionSelect.innerHTML = '<option value="">Loading...</option>';
+
+  try {
+    const data = await api(`/api/modloaders/${loaderType}?mcVersion=${encodeURIComponent(mcVersion)}`);
+    const versions = data.loaders || data.versions || [];
+    state.modLoaderVersions = versions;
+    renderModLoaderVersions(versions);
+  } catch (err) {
+    log(`Failed to load ${loaderType} versions: ${err.message}`, 'error');
+    state.modLoaderVersions = [];
+    renderModLoaderVersions([]);
+  } finally {
+    state.modLoaderLoading = false;
+  }
+}
+
+function renderModLoaderVersions(versions) {
+  const versionSelect = $('#ql-modloader-version');
+  const detailVersionSelect = $('#detail-modloader-version');
+
+  function populateSelect(select) {
+    if (!select) return;
+    select.innerHTML = '';
+    if (!versions.length) {
+      select.innerHTML = '<option value="">No versions available</option>';
+      return;
+    }
+    for (const v of versions) {
+      const opt = document.createElement('option');
+      // Fabric/Quilt versions have a `loader` field; Forge/NeoForge have `forgeVersion` or `id`
+      const versionStr = v.loader || v.forgeVersion || v.id || String(v);
+      const isStable = v.stable !== false;
+      opt.value = versionStr;
+      opt.textContent = versionStr + (isStable ? '' : ' (beta)');
+      select.append(opt);
+    }
+  }
+
+  populateSelect(versionSelect);
+  populateSelect(detailVersionSelect);
+}
+
+function syncModLoaderUi() {
+  // Quick launch mod loader UI
+  const qlType = $('#ql-modloader-type');
+  const qlVerRow = $('#ql-modloader-version-row');
+  const qlVer = $('#ql-modloader-version');
+
+  if (qlType) qlType.value = state.modLoaderType;
+  if (qlVerRow) qlVerRow.style.display = state.modLoaderType ? 'flex' : 'none';
+
+  // Detail panel mod loader UI
+  updateDetailModLoaderVisibility();
+}
+
+function updateDetailModLoaderVisibility() {
+  const type = state.modLoaderType;
+  const verRow = $('#detail-modloader-version-row');
+  const hint = $('#detail-modloader-hint');
+  const modsRow = $('#detail-mods-row');
+
+  if (verRow) verRow.style.display = type ? 'flex' : 'none';
+  if (hint) hint.style.display = type ? 'block' : 'none';
+  if (modsRow) modsRow.style.display = type ? 'flex' : 'none';
+
+  if (type) {
+    const modsDir = (state.settings?.gameDir || '—') + '/mods';
+    $('#detail-mods-dir') && ($('#detail-mods-dir').textContent = modsDir);
+  }
 }
 
 // ── Java ───────────────────────────────────────────────────────────
@@ -516,7 +616,22 @@ function selectedPayload() {
   const accountId = state.settings?.lastAccountId || '';
   const memoryMb = Number($('#settings-memory')?.value || $('#ql-memory')?.value || state.settings?.memoryMb || 2048);
   const javaPath = $('#settings-java-path')?.value.trim() || '';
-  return { versionId, accountId, memoryMb, javaPath };
+
+  // Mod loader: check quick launch selectors first, then detail panel
+  const modLoaderType = $('#ql-modloader-type')?.value
+    || $('#detail-modloader-type')?.value
+    || state.modLoaderType
+    || '';
+  const modLoaderVersion = $('#ql-modloader-version')?.value
+    || $('#detail-modloader-version')?.value
+    || state.modLoaderVersion
+    || '';
+
+  const payload = { versionId, accountId, memoryMb, javaPath };
+  if (modLoaderType && modLoaderVersion) {
+    payload.modLoader = { type: modLoaderType, version: modLoaderVersion };
+  }
+  return payload;
 }
 
 async function doInstall(versionId) {
@@ -558,6 +673,11 @@ function bindUi() {
   // Quick launch
   $('#ql-version')?.addEventListener('change', (e) => {
     $('#ql-launch').disabled = !e.target.value;
+    // Reload mod loader versions if a mod loader type is selected
+    if (state.modLoaderType && e.target.value) {
+      state.modLoaderVersion = '';
+      loadModLoaderVersions(e.target.value, state.modLoaderType);
+    }
   });
 
   $('#ql-launch')?.addEventListener('click', async () => {
@@ -571,6 +691,49 @@ function bindUi() {
 
   $('#ql-memory')?.addEventListener('input', (e) => {
     updateMemoryLabels(e.target.value);
+  });
+
+  // Quick launch mod loader selectors
+  $('#ql-modloader-type')?.addEventListener('change', (e) => {
+    state.modLoaderType = e.target.value;
+    state.modLoaderVersion = '';
+    syncModLoaderUi();
+    // Sync detail panel selector
+    const detailType = $('#detail-modloader-type');
+    if (detailType) detailType.value = e.target.value;
+    updateDetailModLoaderVisibility();
+    if (e.target.value) {
+      const mcVersion = $('#ql-version')?.value || state.selectedVersionId || '';
+      if (mcVersion) loadModLoaderVersions(mcVersion, e.target.value);
+    }
+  });
+
+  $('#ql-modloader-version')?.addEventListener('change', (e) => {
+    state.modLoaderVersion = e.target.value;
+    // Sync detail panel selector
+    const detailVer = $('#detail-modloader-version');
+    if (detailVer) detailVer.value = e.target.value;
+  });
+
+  // Detail panel mod loader selectors
+  $('#detail-modloader-type')?.addEventListener('change', (e) => {
+    state.modLoaderType = e.target.value;
+    state.modLoaderVersion = '';
+    // Sync quick launch selector
+    const qlType = $('#ql-modloader-type');
+    if (qlType) qlType.value = e.target.value;
+    syncModLoaderUi();
+    if (e.target.value) {
+      const mcVersion = state.selectedVersionId || $('#ql-version')?.value || '';
+      if (mcVersion) loadModLoaderVersions(mcVersion, e.target.value);
+    }
+  });
+
+  $('#detail-modloader-version')?.addEventListener('change', (e) => {
+    state.modLoaderVersion = e.target.value;
+    // Sync quick launch selector
+    const qlVer = $('#ql-modloader-version');
+    if (qlVer) qlVer.value = e.target.value;
   });
 
   // Versions page

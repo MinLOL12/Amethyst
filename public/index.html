@@ -94,6 +94,26 @@
           </div>
           <div class="quicklaunch-row">
             <label class="slider-label">
+              <span>Mod Loader</span>
+            </label>
+            <select id="ql-modloader-type" class="ql-select modloader-select" aria-label="Mod loader type">
+              <option value="">None (Vanilla)</option>
+              <option value="fabric">Fabric</option>
+              <option value="forge">Forge</option>
+              <option value="neoforge">NeoForge</option>
+              <option value="quilt">Quilt</option>
+            </select>
+          </div>
+          <div class="quicklaunch-row" id="ql-modloader-version-row" style="display:none">
+            <label class="slider-label">
+              <span>Loader Version</span>
+            </label>
+            <select id="ql-modloader-version" class="ql-select modloader-select" aria-label="Mod loader version">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+          <div class="quicklaunch-row">
+            <label class="slider-label">
               <span>Memory</span>
               <strong><span id="ql-memory-value">2048</span> MB</strong>
             </label>
@@ -149,6 +169,31 @@
               </div>
               <span class="detail-date" id="detail-date">—</span>
               <div class="card-divider"></div>
+
+              <!-- Mod Loader Selection -->
+              <div class="detail-modloader">
+                <div class="detail-modloader-row">
+                  <label class="field-label">Mod Loader</label>
+                  <select id="detail-modloader-type" class="ql-select modloader-select">
+                    <option value="">None (Vanilla)</option>
+                    <option value="fabric">Fabric</option>
+                    <option value="forge">Forge</option>
+                    <option value="neoforge">NeoForge</option>
+                    <option value="quilt">Quilt</option>
+                  </select>
+                </div>
+                <div class="detail-modloader-row" id="detail-modloader-version-row" style="display:none">
+                  <label class="field-label">Loader Version</label>
+                  <select id="detail-modloader-version" class="ql-select modloader-select">
+                    <option value="">Loading...</option>
+                  </select>
+                </div>
+                <p class="modloader-hint" id="detail-modloader-hint" style="display:none">
+                  📂 Drop your mods into the <code>mods</code> folder in the game directory.
+                </p>
+              </div>
+
+              <div class="card-divider"></div>
               <div class="detail-actions">
                 <button id="detail-install" class="primary">▶ Install &amp; Play</button>
               </div>
@@ -156,6 +201,7 @@
                 <div class="info-row"><span class="info-label">Game Directory</span><span class="info-value" id="detail-dir">—</span></div>
                 <div class="info-row"><span class="info-label">Version ID</span><span class="info-value" id="detail-ver">—</span></div>
                 <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="detail-type">—</span></div>
+                <div class="info-row" id="detail-mods-row" style="display:none"><span class="info-label">Mods Directory</span><span class="info-value" id="detail-mods-dir">—</span></div>
               </div>
               <div class="card-divider"></div>
               <div class="detail-memory">

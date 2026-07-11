@@ -468,6 +468,52 @@ input[type="range"]::-moz-range-thumb {
   margin-bottom: 0;
 }
 
+/* ===== Mod Loader ===== */
+.modloader-select {
+  max-width: 280px;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+}
+
+.detail-modloader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-modloader-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-modloader-row .field-label {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.detail-modloader-row .modloader-select {
+  flex: 1;
+  max-width: none;
+}
+
+.modloader-hint {
+  font-size: 0.8rem;
+  color: var(--primary-light);
+  padding: 8px 12px;
+  background: rgba(155, 89, 182, 0.12);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(155, 89, 182, 0.25);
+}
+
+.modloader-hint code {
+  background: rgba(0,0,0,0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
 /* ===== News ===== */
 .news-grid {
   display: grid;

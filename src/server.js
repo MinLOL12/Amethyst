@@ -8,6 +8,7 @@ const { scanJavaInstallations } = require('./launcher/javaLocator');
 const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettings } = require('./launcher/accounts');
 const { installVersion, launchVersion } = require('./launcher/minecraft');
 const { getNews } = require('./launcher/news');
+const { listModLoaders, listFabricLoaders, listForgeVersions, listNeoForgeVersions, listQuiltLoaders } = require('./launcher/modloaders');
 const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 
 const publicDir = path.join(__dirname, '..', 'public');
@@ -142,11 +143,47 @@ async function handleApi(request, response, url) {
     return json(response, 200, { entries: await getNews() });
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/modloaders') {
+    const mcVersion = url.searchParams.get('mcVersion');
+    if (!mcVersion) throw new Error('mcVersion query parameter is required');
+    const loaders = await listModLoaders(mcVersion);
+    return json(response, 200, { mcVersion, loaders });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders/fabric') {
+    const mcVersion = url.searchParams.get('mcVersion');
+    if (!mcVersion) throw new Error('mcVersion query parameter is required');
+    const loaders = await listFabricLoaders(mcVersion);
+    return json(response, 200, { mcVersion, loaders });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders/forge') {
+    const mcVersion = url.searchParams.get('mcVersion');
+    if (!mcVersion) throw new Error('mcVersion query parameter is required');
+    const versions = await listForgeVersions(mcVersion);
+    return json(response, 200, { mcVersion, versions });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders/neoforge') {
+    const mcVersion = url.searchParams.get('mcVersion');
+    if (!mcVersion) throw new Error('mcVersion query parameter is required');
+    const versions = await listNeoForgeVersions(mcVersion);
+    return json(response, 200, { mcVersion, versions });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/modloaders/quilt') {
+    const mcVersion = url.searchParams.get('mcVersion');
+    if (!mcVersion) throw new Error('mcVersion query parameter is required');
+    const loaders = await listQuiltLoaders(mcVersion);
+    return json(response, 200, { mcVersion, loaders });
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/install') {
     const body = await readBody(request);
     if (!body.versionId) throw new Error('versionId is required');
-    const result = await runExclusive(`Install ${body.versionId}`, () => installVersion(body.versionId, body));
-    return json(response, 200, { ok: true, versionId: body.versionId, gameDir: result.paths.root });
+    const label = body.modLoader ? `${body.versionId} (${body.modLoader.type} ${body.modLoader.version})` : body.versionId;
+    const result = await runExclusive(`Install ${label}`, () => installVersion(body.versionId, body));
+    return json(response, 200, { ok: true, versionId: result.versionId, baseVersionId: body.versionId, gameDir: result.paths.root, modsDir: result.paths.mods });
   }
 
   if (request.method === 'POST' && url.pathname === '/api/launch') {
@@ -155,7 +192,8 @@ async function handleApi(request, response, url) {
     const accounts = await listAccounts();
     const account = accounts.find((item) => item.id === body.accountId) || accounts[0];
     if (!account) throw new Error('Create an offline account before launching.');
-    const result = await runExclusive(`Launch ${body.versionId}`, () => launchVersion(body.versionId, account, body));
+    const label = body.modLoader ? `${body.versionId} (${body.modLoader.type} ${body.modLoader.version})` : body.versionId;
+    const result = await runExclusive(`Launch ${label}`, () => launchVersion(body.versionId, account, body));
     return json(response, 200, { ok: true, ...result });
   }
 
