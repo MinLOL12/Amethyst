@@ -27,7 +27,7 @@
 !macro customInstall
   ; Create desktop shortcut
   CreateShortcut "$DESKTOP\Amethyst Launcher.lnk" "$INSTDIR\Amethyst Launcher.exe" "" "$INSTDIR\Amethyst Launcher.exe" 0
-  
+
   ; Start Menu shortcut in Games folder
   CreateDirectory "$SMPROGRAMS\Games"
   CreateShortcut "$SMPROGRAMS\Games\Amethyst Launcher.lnk" "$INSTDIR\Amethyst Launcher.exe" "" "$INSTDIR\Amethyst Launcher.exe" 0
@@ -38,11 +38,11 @@
 !macro customUnInstall
   ; Remove desktop shortcut
   Delete "$DESKTOP\Amethyst Launcher.lnk"
-  
+
   ; Remove start menu shortcuts
   Delete "$SMPROGRAMS\Games\Amethyst Launcher.lnk"
   Delete "$SMPROGRAMS\Games\Uninstall Amethyst.lnk"
-  
+
   ; Try to remove taskbar pin
   nsExec::ExecToLog 'powershell -Command "try { $shell = New-Object -ComObject Shell.Application; $folder = $shell.Namespace($INSTDIR); $item = $folder.ParseName(\"Amethyst Launcher.exe\"); $item.InvokeVerb(\"unpinfromtaskbar\") } catch { }"'
 !macroend

@@ -405,6 +405,7 @@ function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPat
     auth_access_token: accessToken,
     clientid: '',
     auth_xuid: account.xuid || '',
+    user_properties: '{}',
     user_type: userType,
     version_type: versionMeta.type || 'release',
     resolution_width: String(width),

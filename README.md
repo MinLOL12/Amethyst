@@ -1,147 +1,161 @@
 # Amethyst
 
-Amethyst is a **dark purple Minecraft launcher** built with **Node.js** and optional native UI frontends. It supports Microsoft account login, multi-instance profiles, Fabric/Forge/NeoForge/Quilt, Java management, download queues, live logs, and official Mojang downloads.
+Amethyst is a dark-purple Minecraft launcher built with Node.js and a
+**polished zero-build web UI**. The launcher runs locally, serves plain HTML,
+CSS, and JavaScript, and requires no frontend framework, bundler, native UI
+toolchain, or extra runtime.
 
-> Legal/download note: Amethyst does **not** include or redistribute Minecraft client code, libraries, assets, or copyrighted game files. When you install/launch a version, it reads Mojang's public version manifest and downloads the official files from Mojang/Microsoft-hosted URLs on the user's machine.
+> **Legal/download note:** Amethyst does not include or redistribute Minecraft
+> client code, libraries, assets, or copyrighted game files. When you install or
+> launch a version, it reads Mojang's public version manifest and downloads the
+> official files from Mojang/Microsoft-hosted URLs on the user's machine.
+
+## Quick start
+
+Requirements:
+
+- Node.js 18 or newer.
+- Java 17 or newer to launch Minecraft. Amethyst detects installed Java and can
+  manage Java runtimes through the UI.
+- Internet access for first-time downloads, news, loader metadata, and optional
+  Microsoft login.
+
+```bash
+npm start
+```
+
+Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
+your browser. If it does not open automatically, use the URL printed in the
+terminal.
+
+Useful environment variables:
+
+```bash
+AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
+AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
+PORT=8080 npm start                     # use a fixed local port
+AMETHYST_MS_CLIENT_ID=your-azure-app-id npm start  # optional OAuth client
+```
+
+The web UI is intentionally just the files in `public/`: it starts quickly,
+works anywhere Node.js runs, and can be customized without a build step.
+
+## UI
+
+The browser UI is designed to feel like a polished desktop launcher while
+keeping the implementation simple:
+
+- Responsive glassy dark-purple interface with inline SVG iconography.
+- Overview dashboard with quick launch, runtime status, recent activity, news,
+  and file shortcuts.
+- Instance browser with isolated profiles and per-instance settings.
+- Searchable official release and snapshot browser.
+- Offline and Microsoft account profiles.
+- Java detection and managed Java downloads.
+- Live download queue, speed, ETA, install, launch, and log feedback.
+- Keyboard navigation (`1`–`4`) and mobile navigation.
+
+To change the look, edit `public/index.html` and `public/styles.css`. To change
+behavior, edit `public/app.js`; the Node server automatically serves those
+files. No build command is needed.
 
 ## Features
 
 ### Microsoft account login
-- Multiple Microsoft and offline accounts
-- Device-code OAuth (no embedded password form)
-- Remember login via refresh tokens
-- Switch accounts without reauthenticating when a session is stored
 
-### Installations / instances
-- Create multiple profiles with isolated game directories
-- Per-instance Java version and custom JVM arguments
-- Different Minecraft versions and loaders per instance
+- Multiple Microsoft and offline accounts.
+- Device-code OAuth without an embedded password form.
+- Remember login with refresh tokens.
+- Switch accounts without reauthenticating when a session is stored.
 
-### Mod loader support
+### Installations and instances
+
+- Create multiple profiles with isolated game directories.
+- Configure per-instance Java versions and custom JVM arguments.
+- Use different Minecraft versions and loaders per instance.
+- Rename, duplicate, delete, export, and import instances as ZIP files.
+
+### Mod loaders
+
 - Fabric
 - Forge
 - NeoForge
 - Quilt
 - Vanilla
 
-### Instance management
-- Duplicate
-- Rename
-- Delete
-- Export / import as ZIP
-
 ### Java manager
-- Detect installed Java (`JAVA_HOME`, `PATH`, common locations)
-- Download the correct Temurin JDK automatically (Adoptium)
-- Choose which Java each installation uses
 
-### Downloads page
-- Progress bars
-- Download speed
-- Estimated time remaining
-- Queue multiple downloads
+- Detect Java from `JAVA_HOME`, `PATH`, and common locations.
+- Download the correct Temurin JDK automatically through Adoptium.
+- Choose Java per installation.
 
-### Game settings
-- RAM slider
-- Resolution width / height
-- Fullscreen toggle
-- Custom launch arguments and JVM arguments
+### Downloads, settings, and logs
 
-### News / home page
-- Minecraft news (Mojang launcher content)
-- Launcher updates blurb
-- Recently played instances
-- Quick launch
+- Queue downloads with progress, speed, and estimated time remaining.
+- Configure RAM, resolution, fullscreen, JVM arguments, and launch arguments.
+- View live game logs, search logs, copy output, and inspect crash reports.
+- Open instance folders, saves, mods, screenshots, resource packs, logs, and
+  crash reports from the launcher.
 
-### Logs
-- Live console while Minecraft starts
-- Search
-- Copy log
-- Browse and save crash reports
+### Official Minecraft files
 
-### File browser shortcuts
-- Open `.minecraft` / instance root
-- Open saves
-- Open mods
-- Open screenshots
-- Open resource packs
-- Open logs / crash-reports
+Amethyst downloads and verifies official vanilla game files from Mojang
+metadata, including the client jar, libraries, native libraries, asset index,
+and asset objects. It does not grant a Minecraft license; users must comply
+with Minecraft's EULA and applicable terms.
 
-## UI Options
+## Data and file structure
 
-### 1. Browser UI (Default)
-```bash
-npm start
-```
-
-### 2. Qt/QML UI (`qt-ui/`)
-```bash
-./qt-ui/build.sh --run   # Linux/macOS
-qt-ui\build.bat --run    # Windows
-npm run qt:run           # cross-platform helper
-```
-
-For manual build instructions, see `qt-ui/README.md`.
-
-### 3. Tauri UI (`tauri-ui/`)
-```bash
-cd tauri-ui
-npm install
-npm run tauri dev
-```
-
-## Features
-
-- Pure CLI — no HTML, no web JavaScript, no browser, no frontend.
-- Offline-mode accounts.
-- Local storage in `~/.amethyst` (or `AMETHYST_HOME`).
-- Auto-detects Java (JAVA_HOME, PATH, common locations).
-- Downloads + verifies official vanilla versions (client, libraries, natives, assets).
-- Robust downloader using native Node.js `http`/`https` streams (fixes previous freezes/hangs during install).
-- Interactive menu or direct CLI commands.
-- Memory control and Java override.
-- Optional web server mode (`--server`) only if you really want the old browser UI.
-
-## Requirements
-
-- Node.js 18+
-- Java to launch Minecraft (or let Amethyst download one)
-- Internet for first-time downloads, news, Microsoft login, and loader metadata
-
-## Quick start
-
-```bash
-npm start
-```
-
-Environment variables:
-
-```bash
-AMETHYST_HOME=/path/to/data npm start
-AMETHYST_NO_OPEN=1 npm start
-PORT=8080 npm start
-AMETHYST_MS_CLIENT_ID=your-azure-app-id npm start   # optional custom OAuth client
-```
-
-Data is stored under `~/.amethyst` (or `AMETHYST_HOME`):
+Data is stored under `~/.amethyst` or the directory set by `AMETHYST_HOME`:
 
 ```text
 ~/.amethyst/
-├── accounts.json          # accounts (tokens for remembered Microsoft logins)
+├── accounts.json
 ├── settings.json
 ├── instances.json
-├── instances/<name>/      # per-profile game directories
-├── java/                  # managed JDK downloads
-├── minecraft/             # shared/default game files when not using instances
+├── instances/<name>/
+├── java/
+├── minecraft/
 ├── logs/
 └── exports/
 ```
 
-## Microsoft login notes
+The repository is organized as:
 
-Amethyst uses the Microsoft **device code** flow, then Xbox Live → XSTS → Minecraft Services profile lookup. Refresh tokens are stored only when **Remember login** is enabled so you can switch accounts without signing in again.
-
-You must own Minecraft Java Edition on the Microsoft account. Offline accounts remain available for single-player / offline servers.
+```text
+Amethyst/
+├── README.md
+├── LICENSE
+├── package.json
+├── public/                    # zero-build browser UI
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── src/                       # Node.js backend
+│   ├── main.js
+│   ├── server.js
+│   └── launcher/
+│       ├── accounts.js
+│       ├── downloader.js
+│       ├── downloadQueue.js
+│       ├── folders.js
+│       ├── instances.js
+│       ├── javaLocator.js
+│       ├── javaManager.js
+│       ├── logs.js
+│       ├── minecraft.js
+│       ├── minecraftPaths.js
+│       ├── microsoftAuth.js
+│       ├── modLoaders.js
+│       ├── mojangApi.js
+│       ├── news.js
+│       ├── os.js
+│       ├── rules.js
+│       └── store.js
+└── test/
+    ├── features.test.js
+    └── rules.test.js
+```
 
 ## Development checks
 
@@ -149,68 +163,15 @@ You must own Minecraft Java Edition on the Microsoft account. Offline accounts r
 npm test
 ```
 
-Then open the printed URL in a browser.
+## MVP limitations
 
-## How to install a version (CLI)
-
-```bash
-node src/main.js install 1.20.6
-# or with version from interactive menu
-```
-
-Progress and logs are printed directly in the terminal. Downloads are reliable and no longer freeze.
-
-## File structure (key files)
-
-```text
-Amethyst/
-├── src/
-│   ├── main.js          # Entry point (CLI by default)
-│   ├── cli.js           # Pure terminal UI + commands
-│   ├── launcher/
-│   │   ├── downloader.js   # Robust Node http downloads (no web streams)
-│   │   ├── minecraft.js
-│   │   └── ...
-├── package.json         # Zero runtime deps
-└── ...
-```
-
-## Development / checks (optional)
-
-```bash
-node --check src/main.js
-npm test   # if you have npm
-```
-
-This project uses **zero npm dependencies** at runtime. Everything is built-in Node.js modules.
-
-## File structure (simplified for CLI)
-
-```text
-Amethyst/
-├── public/                 # Browser UI
-├── src/
-│   ├── main.js
-│   ├── server.js
-│   ├── config.js
-│   └── launcher/
-│       ├── accounts.js
-│       ├── microsoftAuth.js
-│       ├── instances.js
-│       ├── modLoaders.js
-│       ├── javaManager.js
-│       ├── javaLocator.js
-│       ├── downloadQueue.js
-│       ├── downloader.js
-│       ├── minecraft.js
-│       ├── logs.js
-│       ├── folders.js
-│       └── ...
-├── qt-ui/
-├── tauri-ui/
-└── test/
-```
+- Microsoft authentication requires a configured Azure application client ID
+  when the default client is unavailable.
+- Offline accounts cannot join servers that require authenticated Microsoft
+  sessions.
+- The launcher downloads official files but does not include or redistribute
+  Minecraft code or assets.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT

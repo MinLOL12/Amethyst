@@ -1,7 +1,7 @@
 {
   "name": "amethyst-launcher",
   "version": "0.2.0",
-  "description": "Amethyst - a dark purple Minecraft launcher with Microsoft login, instances, and mod loaders (Node.js).",
+  "description": "Amethyst - a dark purple Minecraft launcher with a polished zero-build web UI.",
   "main": "src/main.js",
   "type": "commonjs",
   "bin": {
@@ -10,11 +10,8 @@
   "scripts": {
     "start": "node src/main.js",
     "dev": "AMETHYST_DEV=1 node src/main.js",
-    "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/downloadQueue.js && node --check src/launcher/javaLocator.js && node --check src/launcher/javaManager.js && node --check src/launcher/minecraft.js && node --check src/launcher/minecraftPaths.js && node --check src/launcher/mojangApi.js && node --check src/launcher/modLoaders.js && node --check src/launcher/microsoftAuth.js && node --check src/launcher/instances.js && node --check src/launcher/logs.js && node --check src/launcher/folders.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js && node --check qt-ui/install.js",
-    "test": "npm run check && node test/rules.test.js && node test/features.test.js",
-    "qt:setup": "node qt-ui/install.js",
-    "qt:build": "cmake --build qt-ui/build --parallel",
-    "qt:run": "node qt-ui/install.js --run"
+    "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/downloadQueue.js && node --check src/launcher/javaLocator.js && node --check src/launcher/javaManager.js && node --check src/launcher/minecraft.js && node --check src/launcher/minecraftPaths.js && node --check src/launcher/mojangApi.js && node --check src/launcher/modLoaders.js && node --check src/launcher/microsoftAuth.js && node --check src/launcher/instances.js && node --check src/launcher/logs.js && node --check src/launcher/folders.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js",
+    "test": "npm run check && node test/rules.test.js && node test/features.test.js"
   },
   "keywords": [
     "minecraft",
@@ -51,11 +48,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Amethyst-Launcher-${version}-${arch}.${ext}",
@@ -84,7 +85,10 @@
       "icon": "build/icon.png"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Game",
       "icon": "build/icon.png"
     },
