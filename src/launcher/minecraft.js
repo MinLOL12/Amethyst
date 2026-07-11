@@ -801,7 +801,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     java: java.path,
     requiredMajor,
     commandPreview: `${command.executable} ${command.args.slice(0, 6).join(' ')} ...`
-  };
+  });
   appendLog({
     stream: 'info',
     message: `Spawn: ${command.executable} (cwd=${command.cwd})`,
@@ -878,10 +878,127 @@ async function launchVersion(versionId, accountOrId, options = {}) {
   };
 }
 
+/**
+ * List all installed Minecraft versions in the given game directory.
+ * Returns vanilla versions and loader profiles (Fabric, Forge, NeoForge, Quilt).
+ */
+async function listInstalledVersions(gameDir) {
+  const versionsDir = path.join(gameDir, 'versions');
+  let entries;
+  try {
+    entries = await fs.readdir(versionsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+
+  const installed = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const versionId = entry.name;
+    const versionJsonPath = path.join(versionsDir, versionId, `${versionId}.json`);
+    let meta;
+    try {
+      meta = await readJson(versionJsonPath, null);
+    } catch (_) {
+      continue;
+    }
+    if (!meta) continue;
+
+    // Check if client jar exists
+    const clientJarPath = path.join(versionsDir, versionId, `${versionId}.jar`);
+    let hasClientJar = false;
+    try {
+      await fs.access(clientJarPath);
+      hasClientJar = true;
+    } catch (_) {
+      // Client jar might be inherited from parent
+      if (meta.inheritsFrom) {
+        const parentJarPath = path.join(versionsDir, meta.inheritsFrom, `${meta.inheritsFrom}.jar`);
+        try {
+          await fs.access(parentJarPath);
+          hasClientJar = true;
+        } catch (_) {}
+      }
+    }
+
+    if (!hasClientJar) continue;
+
+    installed.push({
+      id: versionId,
+      type: meta.type || 'release',
+      releaseTime: meta.releaseTime,
+      loader: meta.loader || 'vanilla',
+      inheritsFrom: meta.inheritsFrom || null
+    });
+  }
+
+  // Sort: releases first, then snapshots, then by release time descending
+  installed.sort((a, b) => {
+    const typeOrder = { release: 0, snapshot: 1, 'old_beta': 2, 'old_alpha': 3 };
+    const aType = typeOrder[a.type] ?? 99;
+    const bType = typeOrder[b.type] ?? 99;
+    if (aType !== bType) return aType - bType;
+    const aTime = new Date(a.releaseTime || 0).getTime();
+    const bTime = new Date(b.releaseTime || 0).getTime();
+    return bTime - aTime;
+  });
+
+  return installed;
+}
+
+async function uninstallVersion(versionId, gameDir) {
+  const versionDir = path.join(gameDir, 'versions', versionId);
+  const versionJsonPath = path.join(versionDir, `${versionId}.json`);
+
+  let meta;
+  try {
+    meta = await readJson(versionJsonPath, null);
+  } catch (_) {
+    throw new Error(`Version not found: ${versionId}`);
+  }
+
+  if (!meta) throw new Error(`Version not found: ${versionId}`);
+
+  // If this version inherits from another, check if any other version depends on it
+  const versionsDir = path.join(gameDir, 'versions');
+  let entries;
+  try {
+    entries = await fs.readdir(versionsDir, { withFileTypes: true });
+  } catch (_) {
+    entries = [];
+  }
+
+  const dependents = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === versionId) continue;
+    const otherJsonPath = path.join(versionsDir, entry.name, `${entry.name}.json`);
+    try {
+      const otherMeta = await readJson(otherJsonPath, null);
+      if (otherMeta?.inheritsFrom === versionId) {
+        dependents.push(entry.name);
+      }
+    } catch (_) {}
+  }
+
+  if (dependents.length > 0) {
+    throw new Error(
+      `Cannot uninstall ${versionId}: the following versions depend on it: ${dependents.join(', ')}`
+    );
+  }
+
+  // Delete the version directory
+  await fs.rm(versionDir, { recursive: true, force: true });
+
+  return { uninstalled: versionId, freedSpace: true };
+}
+
 module.exports = {
   installVersion,
   launchVersion,
   checkVersionInstalled,
+  listInstalledVersions,
+  uninstallVersion,
   buildLaunchCommand,
   gamePaths,
   selectedLibraries,

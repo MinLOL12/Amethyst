@@ -502,6 +502,154 @@ function crc32(buf) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/**
+ * Parse Prism Launcher's instance.cfg (INI format) into an object.
+ */
+function parsePrismIni(content) {
+  const result = {};
+  const lines = content.split(/\r?\n/);
+  let currentSection = '';
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue;
+    const sectionMatch = trimmed.match(/^\[(.+)\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1];
+      result[currentSection] = {};
+      continue;
+    }
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex > 0) {
+      const key = trimmed.slice(0, eqIndex).trim();
+      const value = trimmed.slice(eqIndex + 1).trim();
+      if (currentSection) {
+        result[currentSection][key] = value;
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Import a Prism Launcher instance from its folder.
+ * Expects a folder containing instance.cfg and optionally mmc-pack.json and .minecraft/
+ */
+async function importPrismInstance(prismInstancePath, options = {}) {
+  const source = path.resolve(prismInstancePath);
+  progressBus.emitEvent('status', { message: `Importing Prism instance from ${path.basename(source)}…` });
+
+  // Read instance.cfg
+  const instanceCfgPath = path.join(source, 'instance.cfg');
+  let instanceCfg = {};
+  try {
+    const content = await fs.readFile(instanceCfgPath, 'utf8');
+    instanceCfg = parsePrismIni(content);
+  } catch (error) {
+    throw new Error(`Failed to read instance.cfg: ${error.message}`);
+  }
+
+  // Read mmc-pack.json for version/loader info
+  const mmcPackPath = path.join(source, 'mmc-pack.json');
+  let mmcPack = {};
+  try {
+    const content = await fs.readFile(mmcPackPath, 'utf8');
+    mmcPack = JSON.parse(content);
+  } catch (_) {
+    // mmc-pack.json is optional
+  }
+
+  // Determine instance name
+  const name = options.name || instanceCfg.Instance?.name || instanceCfg.name || path.basename(source);
+
+  // Determine Minecraft version and loader from mmc-pack.json or instance.cfg
+  let versionId = options.versionId || mmcPack.components?.find((c) => c.uid === 'net.minecraft')?.version || instanceCfg.Instance?.MCVersion || 'latest';
+  let loader = 'vanilla';
+  let loaderVersion = '';
+
+  // Check mmc-pack.json for loader components
+  if (mmcPack.components) {
+    const fabricComp = mmcPack.components.find((c) => c.uid === 'org.quiltmc' || c.uid === 'net.fabricmc');
+    const forgeComp = mmcPack.components.find((c) => c.uid === 'net.minecraftforge');
+    const neoforgeComp = mmcPack.components.find((c) => c.uid === 'net.neoforged');
+    const quiltComp = mmcPack.components.find((c) => c.uid === 'org.quiltmc');
+
+    if (fabricComp && fabricComp.uid === 'net.fabricmc') {
+      loader = 'fabric';
+      loaderVersion = fabricComp.version || '';
+    } else if (forgeComp) {
+      loader = 'forge';
+      loaderVersion = forgeComp.version || '';
+    } else if (neoforgeComp) {
+      loader = 'neoforge';
+      loaderVersion = neoforgeComp.version || '';
+    } else if (quiltComp) {
+      loader = 'quilt';
+      loaderVersion = quiltComp.version || '';
+    }
+  }
+
+  // Fallback to instance.cfg for loader info
+  if (loader === 'vanilla' && instanceCfg.Instance) {
+    const loaderName = instanceCfg.Instance.Loader || instanceCfg.Instance.loader || '';
+    if (loaderName.toLowerCase().includes('fabric')) loader = 'fabric';
+    else if (loaderName.toLowerCase().includes('forge')) loader = 'forge';
+    else if (loaderName.toLowerCase().includes('neoforge')) loader = 'neoforge';
+    else if (loaderName.toLowerCase().includes('quilt')) loader = 'quilt';
+    loaderVersion = instanceCfg.Instance.LoaderVersion || instanceCfg.Instance.loaderVersion || '';
+  }
+
+  // Java settings
+  const javaPath = instanceCfg.Java?.JavaPath || instanceCfg.Java?.javaPath || '';
+
+  // Memory settings
+  const memoryMb = Number(instanceCfg.Java?.MaxMemory || instanceCfg.Java?.maxMemory || instanceCfg.Instance?.MaxMemory || 2048);
+
+  // Resolution
+  const resolutionWidth = Number(instanceCfg.Instance?.WindowWidth || 854);
+  const resolutionHeight = Number(instanceCfg.Instance?.WindowHeight || 480);
+  const fullscreen = instanceCfg.Instance?.Fullscreen === 'true' || instanceCfg.Instance?.fullscreen === 'true';
+
+  // JVM args
+  const jvmArgs = instanceCfg.Java?.JvmArgs || instanceCfg.Java?.jvmArgs || '';
+
+  // Game directory - Prism uses .minecraft subfolder
+  const prismGameDir = path.join(source, '.minecraft');
+  const gameDir = options.gameDir || prismGameDir;
+
+  // Create the Amethyst instance
+  const instance = await createInstance({
+    name,
+    versionId,
+    loader,
+    loaderVersion,
+    javaPath,
+    jvmArgs,
+    launchArgs: '',
+    memoryMb: Number.isFinite(memoryMb) ? memoryMb : 2048,
+    resolutionWidth: Number.isFinite(resolutionWidth) ? resolutionWidth : 854,
+    resolutionHeight: Number.isFinite(resolutionHeight) ? resolutionHeight : 480,
+    fullscreen,
+    notes: `Imported from Prism Launcher: ${source}`
+  });
+
+  // Copy game directory content (mods, saves, resourcepacks, etc.)
+  const folders = ['mods', 'saves', 'resourcepacks', 'shaderpacks', 'config', 'options.txt', 'optionsof.txt'];
+  for (const folder of folders) {
+    const from = path.join(prismGameDir, folder);
+    const to = path.join(instance.gameDir, folder);
+    try {
+      await copyPath(from, to);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+
+  progressBus.emitEvent('instance-imported', { id: instance.id, source, prism: true });
+  return instance;
+}
+
 module.exports = {
   listInstances,
   getInstance,
@@ -514,6 +662,7 @@ module.exports = {
   getRecentInstances,
   exportInstance,
   importInstance,
+  importPrismInstance,
   openInstanceFolder,
   instancesRoot
 };

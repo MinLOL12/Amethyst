@@ -29,7 +29,8 @@ const {
   deleteInstance,
   getRecentInstances,
   exportInstance,
-  importInstance
+  importInstance,
+  importPrismInstance
 } = require('./launcher/instances');
 const {
   LOADERS,
@@ -42,7 +43,7 @@ const {
   downloadJava
 } = require('./launcher/javaManager');
 const { downloadQueue } = require('./launcher/downloadQueue');
-const { installVersion, launchVersion, checkVersionInstalled } = require('./launcher/minecraft');
+const { installVersion, launchVersion, checkVersionInstalled, listInstalledVersions, uninstallVersion } = require('./launcher/minecraft');
 const { getNews } = require('./launcher/news');
 const { listDrives } = require('./launcher/drives');
 const {
@@ -190,6 +191,23 @@ async function handleApi(request, response, url) {
   // ── Versions ──────────────────────────────────────────────────
   if (method === 'GET' && url.pathname === '/api/versions') {
     return json(response, 200, await listVersions());
+  }
+
+  if (method === 'GET' && url.pathname === '/api/versions/installed') {
+    const settings = await readSettings();
+    const gameDir = url.searchParams.get('gameDir') || settings.gameDir;
+    const installed = await listInstalledVersions(gameDir);
+    return json(response, 200, { versions: installed });
+  }
+
+  const versionUninstallMatch = matchRoute(url.pathname, '/api/versions/:id/uninstall');
+  if (method === 'POST' && versionUninstallMatch) {
+    const settings = await readSettings();
+    const gameDir = settings.gameDir;
+    const result = await runExclusive(`Uninstall ${versionUninstallMatch.id}`, () =>
+      uninstallVersion(versionUninstallMatch.id, gameDir)
+    );
+    return json(response, 200, result);
   }
 
   // ── Java ──────────────────────────────────────────────────────
@@ -347,6 +365,17 @@ async function handleApi(request, response, url) {
       name: `Import instance`,
       type: 'import',
       run: async () => importInstance(body.path, body)
+    });
+    return json(response, 202, { job });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/instances/import-prism') {
+    const body = await readBody(request);
+    if (!body.path) throw new Error('path to Prism instance folder is required');
+    const job = downloadQueue.enqueue({
+      name: `Import Prism instance`,
+      type: 'import',
+      run: async () => importPrismInstance(body.path, body)
     });
     return json(response, 202, { job });
   }
