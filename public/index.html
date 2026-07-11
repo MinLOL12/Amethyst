@@ -174,7 +174,7 @@
         <div class="settings-grid">
           <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">RUNTIME</span><h2>Java settings</h2></div><span class="panel-icon">☕</span></div><div class="settings-field"><label class="field-label" for="settings-java-path">JAVA PATH OVERRIDE</label><span class="field-hint">Leave empty and Amethyst will auto-detect Java.</span><input id="settings-java-path" placeholder="Auto-detect Java" autocomplete="off"></div><div class="field-group"><span class="field-label">DETECTED INSTALLATIONS</span><div id="settings-java-list" class="java-list"><span class="muted">Scanning…</span></div></div></section>
           <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">PERFORMANCE</span><h2>Game settings</h2></div><span class="panel-icon">◒</span></div><div class="settings-field"><label class="field-label">MEMORY ALLOCATION</label><span class="field-hint">Amount of RAM allocated to Minecraft.</span><div class="memory-slider-row settings-memory-row"><span>512 MB</span><input id="settings-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Memory allocation"><span>16 GB</span></div><div class="memory-value-display" id="settings-memory-display">2 GB (2048 MB)</div></div></section>
-          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">STORAGE</span><h2>Data directory</h2></div><span class="panel-icon">⌂</span></div><div class="data-directory"><span class="directory-icon">/</span><div><strong id="settings-data-dir">—</strong><p>Set <code>AMETHYST_HOME</code> to change this location.</p></div></div></section>
+          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">STORAGE</span><h2>Data directory</h2></div><span class="panel-icon">⌂</span></div><div class="data-directory"><span class="directory-icon">/</span><div><strong id="settings-data-dir">—</strong><p>Set <code>AMETHYST_HOME</code> to change this location.</p></div></div><div class="data-directory" style="margin-top:12px"><span class="directory-icon">⊞</span><div><strong id="settings-game-dir">—</strong><p>Choose which drive to download game files to.</p></div><button id="settings-change-dir" class="button button-quiet" style="margin-left:auto">Change</button></div></section>
           <section class="card settings-card about-card"><div class="panel-heading"><div><span class="section-eyebrow">ABOUT</span><h2>Amethyst</h2></div><span class="panel-icon">✦</span></div><div class="about-content"><div class="about-title-row"><span class="about-name">A focused vanilla experience.</span><span class="about-version">v<span id="about-version">0.1.0</span></span></div><p>All game files are downloaded from official Mojang / Microsoft servers when you need them. Amethyst does not bundle or redistribute Minecraft code.</p><div class="about-status-row"><span class="status-dot offline" id="about-dot"></span><span id="about-backend-status">Disconnected</span><span class="status-separator">·</span><span>Node.js backend</span></div></div></section>
         </div>
       </div>
@@ -240,6 +240,22 @@
         </div>
       </div>
       <div class="modal-actions skin-modal-actions"><button id="skin-cancel" class="button button-subtle">Cancel</button><button id="skin-apply" class="button primary" disabled>Apply skin</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="drive-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="drive-modal-title">
+    <div class="modal" style="width:min(560px,100%)"><div class="modal-header"><div class="modal-icon"><span>⊞</span></div><div><span class="modal-title" id="drive-modal-title">Choose download location</span><span class="modal-version">Select a drive for game files</span></div><button id="drive-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="modal-body" style="align-items:stretch; padding:0">
+        <div class="drive-list" id="drive-list"><span class="muted">Loading drives…</span></div>
+        <div class="settings-field" style="padding:12px 20px; border-top:1px solid var(--hairline); margin:0">
+          <label class="field-label">OR ENTER CUSTOM PATH</label>
+          <div class="game-dir-row">
+            <input id="drive-custom-path" placeholder="/custom/path">
+            <button id="drive-custom-select" class="button button-subtle">Use</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="drive-cancel" class="button button-subtle">Cancel</button></div>
     </div>
   </div>
 

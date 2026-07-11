@@ -247,6 +247,58 @@ function mergeVersionMeta(parent, child) {
   return merged;
 }
 
+async function checkVersionInstalled(versionId, options = {}) {
+  const settings = await readSettings();
+  let gameDir = options.gameDir || settings.gameDir;
+  let resolvedVersionId = versionId;
+
+  if (options.instanceId) {
+    const instance = await getInstance(options.instanceId);
+    gameDir = instance.gameDir;
+    resolvedVersionId = instance.playVersionId || instance.versionId || versionId;
+  }
+
+  const paths = gamePaths(gameDir, resolvedVersionId);
+
+  // Quick check: version JSON and client JAR must exist
+  let jsonExists = false;
+  let jarExists = false;
+  try { await fs.access(paths.versionJson); jsonExists = true; } catch {}
+  try { await fs.access(paths.clientJar); jarExists = true; } catch {}
+  if (!jsonExists || !jarExists) return { installed: false, versionId: resolvedVersionId, gameDir, paths };
+
+  // If the version JSON exists, load it and verify libraries
+  try {
+    const versionMeta = JSON.parse(await fs.readFile(paths.versionJson, 'utf8'));
+    const { downloads } = getLibraryDownloads(versionMeta, paths);
+
+    let missingLibs = 0;
+    for (const dl of downloads) {
+      try { await fs.access(dl.destination); } catch { missingLibs++; }
+    }
+
+    // Check asset index exists
+    const assetIndexId = versionMeta.assetIndex?.id || versionMeta.assets || 'legacy';
+    const assetIndexPath = path.join(paths.assetIndexes, `${assetIndexId}.json`);
+    let assetIndexExists = false;
+    try { await fs.access(assetIndexPath); assetIndexExists = true; } catch {}
+
+    const fullyInstalled = missingLibs === 0 && assetIndexExists;
+    return {
+      installed: fullyInstalled,
+      versionId: resolvedVersionId,
+      gameDir,
+      paths,
+      versionMeta,
+      missingLibraries: missingLibs,
+      totalLibraries: downloads.length,
+      assetIndexExists
+    };
+  } catch {
+    return { installed: false, versionId: resolvedVersionId, gameDir, paths };
+  }
+}
+
 async function installVersion(versionId, options = {}) {
   const settings = await readSettings();
   let gameDir = options.gameDir || settings.gameDir;
@@ -493,13 +545,22 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     throw new Error('Choose an account before launching.');
   }
 
-  const install = await installVersion(launchVersionId, {
-    ...options,
-    gameDir,
-    instanceId: options.instanceId,
-    loader: options.loader || instance?.loader,
-    loaderVersion: options.loaderVersion || instance?.loaderVersion
-  });
+  let install;
+  if (options.skipInstall) {
+    // Skip install — use already-downloaded files directly
+    const paths = gamePaths(gameDir, launchVersionId);
+    const versionMeta = await resolveVersionMeta(launchVersionId, gameDir);
+    install = { versionMeta, paths, versionId: launchVersionId };
+    progressBus.emitEvent('status', { message: `${launchVersionId} already installed — launching directly` });
+  } else {
+    install = await installVersion(launchVersionId, {
+      ...options,
+      gameDir,
+      instanceId: options.instanceId,
+      loader: options.loader || instance?.loader,
+      loaderVersion: options.loaderVersion || instance?.loaderVersion
+    });
+  }
 
   const launchSettings = {
     memoryMb: options.memoryMb || instance?.memoryMb || settings.memoryMb,
@@ -564,6 +625,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
 module.exports = {
   installVersion,
   launchVersion,
+  checkVersionInstalled,
   buildLaunchCommand,
   gamePaths,
   selectedLibraries,

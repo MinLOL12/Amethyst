@@ -38,8 +38,9 @@ const {
   downloadJava
 } = require('./launcher/javaManager');
 const { downloadQueue } = require('./launcher/downloadQueue');
-const { installVersion, launchVersion } = require('./launcher/minecraft');
+const { installVersion, launchVersion, checkVersionInstalled } = require('./launcher/minecraft');
 const { getNews } = require('./launcher/news');
+const { listDrives } = require('./launcher/drives');
 const {
   getLogs,
   getLogText,
@@ -365,6 +366,19 @@ async function handleApi(request, response, url) {
     return json(response, 202, { job });
   }
 
+  // ── Drives ────────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/drives') {
+    return json(response, 200, { drives: await listDrives() });
+  }
+
+  // ── Check Installed ────────────────────────────────────────────
+  if (method === 'POST' && url.pathname === '/api/check-installed') {
+    const body = await readBody(request);
+    if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
+    const result = await checkVersionInstalled(body.versionId, body);
+    return json(response, 200, result);
+  }
+
   // ── Install / Launch ──────────────────────────────────────────
   if (method === 'POST' && url.pathname === '/api/install') {
     const body = await readBody(request);
@@ -387,6 +401,15 @@ async function handleApi(request, response, url) {
     const accounts = await listAccounts();
     const accountId = body.accountId || (await readSettings()).lastAccountId || accounts[0]?.id;
     if (!accountId) throw new Error('Create or sign in to an account before launching.');
+
+    // Check if already installed - skip downloads if so
+    if (!body.skipInstall) {
+      const check = await checkVersionInstalled(body.versionId || (await getInstance(body.instanceId)).playVersionId, body);
+      if (check.installed) {
+        body.skipInstall = true;
+        progressBus.emitEvent('status', { message: `${body.versionId} already installed — skipping downloads` });
+      }
+    }
 
     const result = await runExclusive(
       body.instanceId ? 'Launch instance' : `Launch ${body.versionId}`,
