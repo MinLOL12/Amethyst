@@ -1,0 +1,10 @@
+# Normalize to LF on checkout for all text files
+* text=auto eol=lf
+
+# JavaScript sources
+*.js text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
