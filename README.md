@@ -33,6 +33,7 @@ Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
 your browser. Browser mode is the default—no extra `server` flag is required.
 The terminal only hosts the local backend and must remain open while the
 launcher is running.
+###### Amethyst will not work on Node.js versions that are older than Node.js 18.
 
 Amethyst always prints the launcher URL on its own line. If the browser cannot
 be opened automatically (for example, over SSH or on a headless desktop), click
