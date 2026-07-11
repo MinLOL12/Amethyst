@@ -547,7 +547,7 @@ function splitUserArgs(input) {
   return legacySplitArguments(String(input).trim());
 }
 
-function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPath) {
+function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPath, javaMajor = 0) {
   const libraries = selectedLibraries(versionMeta)
     .map((library) => libraryArtifact(library))
     .filter(Boolean)
@@ -594,6 +594,21 @@ function buildLaunchCommand(versionMeta, paths, account, launchSettings, javaPat
       '-cp',
       classpath
     ];
+  }
+
+  // Add module access flags for Java 16+ to support Forge and certain mods.
+  if (javaMajor >= 16) {
+    jvmArgs.push(
+      '--add-opens', 'java.base/java.util=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.util.concurrent=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.text=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
+      '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
+      '--add-opens', 'java.base/jdk.internal.module=ALL-UNNAMED',
+      '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED'
+    );
   }
 
   jvmArgs = jvmArgs.filter((arg) => !/^-Xm[xs]/i.test(arg));
@@ -749,7 +764,7 @@ async function launchVersion(versionId, accountOrId, options = {}) {
   await touchAccount(authAccount.id);
   if (instance) await touchPlayed(instance.id);
 
-  const command = buildLaunchCommand(install.versionMeta, install.paths, authAccount, launchSettings, java.path);
+  const command = buildLaunchCommand(install.versionMeta, install.paths, authAccount, launchSettings, java.path, java.major);
   progressBus.emitEvent('launch-start', {
     versionId: install.versionId,
     baseVersionId,
