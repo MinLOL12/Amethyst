@@ -66,12 +66,17 @@ files. No build command is needed.
 
 ## Features
 
-### Microsoft account login
+### Microsoft account login and skins
 
 - Multiple Microsoft and offline accounts.
 - Device-code OAuth without an embedded password form.
 - Remember login with refresh tokens.
 - Switch accounts without reauthenticating when a session is stored.
+- Change a Microsoft account's official Java Edition skin from the Accounts page.
+- Preview classic/slim and legacy skin PNGs before applying them.
+- Import a local PNG, a direct HTTPS PNG URL, or a NameMC / The Skindex skin page; quick links are also provided for Planet Minecraft and Nova Skin.
+
+Offline accounts cannot publish an official skin because Minecraft's profile service requires an authenticated, game-owning Microsoft account.
 
 ### Installations and instances
 
@@ -87,6 +92,8 @@ files. No build command is needed.
 - NeoForge
 - Quilt
 - Vanilla
+
+Forge and NeoForge modpacks use isolated game directories. Before the official installer runs, Amethyst creates a compatible `launcher_profiles.json` inside the instance, so the installer does not incorrectly ask the user to run Mojang's launcher first.
 
 ### Java manager
 
@@ -144,6 +151,7 @@ Amethyst/
 │       ├── downloader.js
 │       ├── downloadQueue.js
 │       ├── folders.js
+│       ├── forgeInstaller.js
 │       ├── instances.js
 │       ├── javaLocator.js
 │       ├── javaManager.js
@@ -156,6 +164,7 @@ Amethyst/
 │       ├── news.js
 │       ├── os.js
 │       ├── rules.js
+│       ├── skins.js
 │       └── store.js
 └── test/
     ├── features.test.js

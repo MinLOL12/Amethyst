@@ -212,6 +212,44 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 9px; backgro
   .topbar { padding: 0 15px; }.breadcrumbs { font-size: .58rem; }.topbar-right { gap: 10px; }.topbar-status { font-size: .65rem; }.page { padding-right: 15px; padding-left: 15px; }.page h1 { font-size: 2.3rem; }.hero-copy { padding: 32px 23px 18px; }.hero-copy h1 { font-size: 2.75rem; }.hero-copy p { font-size: .82rem; }.hero-actions { align-items: stretch; flex-direction: column; }.hero-actions .button { width: 100%; }.stat-item { padding: 13px 12px; }.stat-item strong { font-size: .78rem; }.stat-item small { font-size: .58rem; }.stat-icon { width: 29px; height: 29px; }.stat-icon svg { width: 15px; height: 15px; }.launch-card, .news-card, .accounts-list-panel, .accounts-add-panel, .settings-card { padding: 20px; }.account-items { margin-right: -20px; margin-left: -20px; }.account-item { padding-right: 20px; padding-left: 20px; }.account-actions .select-btn { display: none; }.news-grid { grid-template-columns: 1fr; }.detail-id { font-size: 2rem; }.versions-detail-panel { padding: 25px 20px; }.info-row { grid-template-columns: 100px minmax(0, 1fr); }.info-row strong { font-size: .62rem; }.search-wrap input { width: auto !important; }.heading-actions .button-quiet span { display: none; }.toast-region { right: 15px; bottom: 83px; left: 15px; align-items: stretch; }
 }
 
+/* Microsoft login and skin manager */
+.account-method-divider { display: flex; align-items: center; width: 100%; gap: 12px; margin: 24px 0 14px; color: var(--ink-muted); font-size: .58rem; font-weight: 750; letter-spacing: .12em; }
+.account-method-divider::before, .account-method-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.account-item.microsoft .account-avatar { border-radius: 5px; background: linear-gradient(145deg, #7a5ce0, #49308d); }
+.account-item.microsoft .account-status-dot { background: var(--violet-bright); box-shadow: 0 0 7px var(--violet); }
+.account-actions .skin-btn { color: var(--violet-bright); }
+.microsoft-login-body { text-align: center; }
+.microsoft-login-body p { max-width: 360px; color: var(--ink-soft); font-size: .78rem; line-height: 1.55; }
+.device-code { padding: 12px 18px; color: #f2eaff; border: 1px dashed rgba(201,174,255,.55); border-radius: 10px; background: rgba(168,121,255,.1); font-family: "SFMono-Regular", Consolas, monospace; font-size: 1.45rem; font-weight: 750; letter-spacing: .16em; }
+.device-code:hover { border-color: var(--violet-bright); background: rgba(168,121,255,.17); }
+.skin-status { display: block; color: var(--ink-muted); font-size: .68rem; line-height: 1.5; }
+.skin-status.error { color: #ffc1d0; }
+.skin-status.success { color: var(--green); }
+.skin-modal { width: min(860px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.skin-manager { display: grid; grid-template-columns: minmax(210px, .7fr) minmax(300px, 1.3fr); gap: 24px; margin-top: 24px; }
+.skin-preview-panel { display: flex; flex-direction: column; align-items: center; gap: 13px; padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: radial-gradient(circle at 50% 30%, rgba(168,121,255,.16), transparent 60%), rgba(8,6,14,.42); }
+.skin-canvas-wrap { position: relative; display: grid; width: 176px; min-height: 304px; place-items: center; overflow: hidden; border: 1px solid rgba(190,157,255,.17); border-radius: 13px; background-color: rgba(255,255,255,.02); background-image: linear-gradient(45deg, rgba(255,255,255,.025) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.025) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.025) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.025) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; }
+#skin-preview { display: none; width: 128px; height: 256px; image-rendering: pixelated; filter: drop-shadow(0 16px 18px rgba(0,0,0,.45)); }
+#skin-preview-empty { max-width: 120px; color: var(--ink-muted); font-size: .69rem; line-height: 1.5; text-align: center; }
+.skin-preview-meta { display: flex; flex-direction: column; gap: 4px; text-align: center; }
+.skin-preview-meta strong { font-size: .75rem; }
+.skin-preview-meta span { color: var(--ink-muted); font-size: .62rem; }
+.skin-controls { display: flex; flex-direction: column; gap: 11px; }
+.skin-controls h2 { margin-top: 8px; font-size: 1.4rem; }
+.skin-url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.skin-url-row input { width: 100%; }
+.skin-provider-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
+.skin-provider-list a { padding: 6px 9px; color: var(--violet-bright); border: 1px solid rgba(168,121,255,.2); border-radius: 7px; background: rgba(168,121,255,.07); font-size: .62rem; text-decoration: none; }
+.skin-provider-list a:hover { border-color: rgba(168,121,255,.45); background: rgba(168,121,255,.14); }
+.skin-modal-actions { gap: 8px; }
+
+@media (max-width: 700px) {
+  .skin-modal { max-height: calc(100vh - 24px); padding: 20px; }
+  .skin-manager { grid-template-columns: 1fr; }
+  .skin-canvas-wrap { min-height: 275px; }
+  .skin-preview-panel { padding: 14px; }
+}
+
 /* Modpacks */
 #mp-browse-results .mod-item { display:flex; gap:12px; padding:14px; border:1px solid var(--line); border-radius:12px; background: rgba(255,255,255,.03); }
 #mp-browse-results .mod-item img { width:40px; height:40px; border-radius:8px; object-fit:cover; background: var(--panel-raised); }

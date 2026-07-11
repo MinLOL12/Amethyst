@@ -9,8 +9,9 @@ let gamePaths;
 try { ({ gamePaths } = require('./minecraftPaths')); } catch { ({ gamePaths } = require('./minecraft')); }
 const { installVersion } = require('./minecraft');
 const { readSettings } = require('./accounts');
-const { pickJava } = require('./javaLocator');
+const { pickJava, recommendedJavaRequirement } = require('./javaLocator');
 const { spawn } = require('node:child_process');
+const { runForgeInstaller, findInstalledLoaderVersion } = require('./forgeInstaller');
 
 function modpacksRoot() {
   return path.join(getDataRoot(), 'modpacks');
@@ -154,36 +155,67 @@ async function installModpack(id, options={}){
 
   if(loader==='forge' || loader==='neoforge'){
     const settings=await readSettings();
-    // pickJava may be in javaManager in new main, try both
     let java=null;
-    try{ java=await require('./javaLocator').pickJava(null, settings.javaPath); }catch{ try{ const jm=require('./javaManager'); const list=await jm.listAllJava(); java=list[0]; }catch{} }
-    if(!java) throw new Error('Java not found for Forge installer');
-    let forgeVer=loaderVersion;
-    if(!forgeVer){
-      if(loader==='forge'){ const list=await fetchForgeVersions(mcVersion); const latest=list.find(v=>v.type==='recommended')||list.find(v=>v.type==='latest')||list[0]; if(!latest) throw new Error(`No Forge version for ${mcVersion}`); forgeVer=latest.forgeVersion; }
-      else { const list=await fetchNeoForgeVersions(); if(!list.length) throw new Error('No NeoForge version'); forgeVer=list[0].neoForgeVersion||list[0].id; }
+    const javaRequirement=recommendedJavaRequirement(baseInstall.versionMeta);
+    try{
+      java=await pickJava(javaRequirement, options.javaPath||settings.javaPath);
+    }catch{
+      try{
+        const jm=require('./javaManager');
+        const list=await jm.listAllJava();
+        java=list.find(item=>item.compatible!==false)||list[0];
+      }catch{}
     }
+    if(!java) throw new Error(`No compatible Java runtime found for the ${loader==='neoforge'?'NeoForge':'Forge'} installer (${javaRequirement.description}).`);
+
+    let forgeVer=loaderVersion;
+    // Older UI builds stored Forge's display id ("<mc>-<forge>") instead of
+    // the Maven loader version. Accept those manifests so failed packs repair
+    // themselves on the next install attempt.
+    if(loader==='forge' && forgeVer && forgeVer.startsWith(`${mcVersion}-`)) forgeVer=forgeVer.slice(mcVersion.length+1);
+    if(!forgeVer){
+      if(loader==='forge'){
+        const list=await fetchForgeVersions(mcVersion);
+        const latest=list.find(v=>v.type==='recommended')||list.find(v=>v.type==='latest')||list[0];
+        if(!latest) throw new Error(`No Forge version for ${mcVersion}`);
+        forgeVer=latest.forgeVersion;
+      }else{
+        const list=await fetchNeoForgeVersions();
+        if(!list.length) throw new Error('No NeoForge version');
+        forgeVer=list[0].neoForgeVersion||list[0].id;
+      }
+    }
+
     let installerUrl, fileName;
-    if(loader==='forge'){ fileName=`forge-${mcVersion}-${forgeVer}-installer.jar`; installerUrl=`https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVer}/${fileName}`; }
-    else { fileName=`neoforge-${forgeVer}-installer.jar`; installerUrl=`https://maven.neoforged.net/releases/net/neoforged/neoforge/${forgeVer}/${fileName}`; }
+    if(loader==='forge'){
+      fileName=`forge-${mcVersion}-${forgeVer}-installer.jar`;
+      installerUrl=`https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVer}/${fileName}`;
+    }else{
+      fileName=`neoforge-${forgeVer}-installer.jar`;
+      installerUrl=`https://maven.neoforged.net/releases/net/neoforged/neoforge/${forgeVer}/${fileName}`;
+    }
     const installerPath=path.join(modpackDir(id), fileName);
     await downloadFile(installerUrl, installerPath, { label:`${loader} installer ${forgeVer}` });
-    progressBus.emitEvent('status',{message:`Running ${loader} installer ${forgeVer}`});
-    await new Promise((resolve,reject)=>{
-      const child=spawn(java.path, ['-jar', installerPath, '--installClient', gameDir], { cwd: modpackDir(id) });
-      let out='';
-      child.stdout.on('data', d=>{ out+=d.toString(); progressBus.emitEvent('status',{message:d.toString().trim()}); });
-      child.stderr.on('data', d=>{ out+=d.toString(); progressBus.emitEvent('status',{message:d.toString().trim()}); });
-      child.on('error', reject);
-      child.on('close', code=>{ if(code===0) resolve(out); else reject(new Error(`${loader} installer failed code ${code}: ${out.slice(-2000)}`)); });
+    await runForgeInstaller({
+      javaPath:java.path,
+      installerPath,
+      gameDir,
+      cwd:modpackDir(id),
+      loader,
+      loaderVersion:forgeVer,
+      minecraftVersion:mcVersion,
+      modpackName:manifest.name
     });
-    const versionsDir=path.join(gameDir,'versions');
-    let versionFolders=[]; try{ versionFolders=await fs.readdir(versionsDir); }catch{}
-    let found=versionFolders.find(v=>v.includes(forgeVer) && (v.includes('forge')||v.includes('neoforge')));
-    if(!found) found=versionFolders.sort().reverse()[0];
-    customVersionId=found||`${mcVersion}-${loader}-${forgeVer}`;
-    manifest.loaderVersion=forgeVer; manifest.customVersionId=customVersionId; await saveModpackFile(manifest);
-    return { manifest, versionMeta:null, paths: gamePaths(gameDir, customVersionId) };
+
+    customVersionId=await findInstalledLoaderVersion(gameDir,{loader,loaderVersion:forgeVer});
+    if(!customVersionId){
+      throw new Error(`${loader==='neoforge'?'NeoForge':'Forge'} installer completed, but no matching ${forgeVer} version profile was created in ${path.join(gameDir,'versions')}.`);
+    }
+    const installedMeta=await readJson(path.join(gameDir,'versions',customVersionId,`${customVersionId}.json`),null);
+    manifest.loaderVersion=forgeVer;
+    manifest.customVersionId=customVersionId;
+    await saveModpackFile(manifest);
+    return { manifest, versionMeta:installedMeta, paths:gamePaths(gameDir,customVersionId) };
   }
 
   manifest.customVersionId=mcVersion; await saveModpackFile(manifest);

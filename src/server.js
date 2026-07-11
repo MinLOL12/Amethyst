@@ -55,6 +55,7 @@ const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 const modpacks = require('./launcher/modpacks');
 const modrinth = require('./launcher/modrinth');
 const curseforge = require('./launcher/curseforge');
+const skins = require('./launcher/skins');
 
 const publicDir = path.join(__dirname, '..', 'public');
 const clients = new Set();
@@ -244,6 +245,21 @@ async function handleApi(request, response, url) {
   const accountSelect = matchRoute(url.pathname, '/api/accounts/:id/select');
   if (method === 'POST' && accountSelect) {
     return json(response, 200, { account: await setActiveAccount(accountSelect.id) });
+  }
+
+  const accountSkin = matchRoute(url.pathname, '/api/accounts/:id/skin');
+  if (method === 'POST' && accountSkin) {
+    const body = await readBody(request);
+    return json(response, 200, await skins.applySkin(accountSkin.id, body));
+  }
+
+  if (method === 'GET' && url.pathname === '/api/skins/providers') {
+    return json(response, 200, { providers: skins.SKIN_PROVIDERS });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/skins/preview') {
+    const body = await readBody(request);
+    return json(response, 200, await skins.previewSkin(body));
   }
 
   const deleteAccountMatch = matchRoute(url.pathname, '/api/accounts/:id');

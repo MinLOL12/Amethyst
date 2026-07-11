@@ -19,6 +19,11 @@ const state = {
   pendingVersionId: '',
   toastTimer: null,
   curseforgeEnabled: false,
+  microsoftLoginId: null,
+  microsoftLoginTimer: null,
+  skinAccountId: null,
+  skinImageData: '',
+  skinSourceUrl: '',
 };
 
 const pageLabels = {
@@ -170,24 +175,33 @@ function renderAccounts() {
   container.innerHTML = '';
   for (const account of state.accounts) {
     const selected = account.id === state.settings?.lastAccountId;
+    const isMicrosoft = account.type === 'microsoft';
     const item = document.createElement('div');
-    item.className = `account-item${selected ? ' selected' : ''}`;
+    item.className = `account-item${selected ? ' selected' : ''}${isMicrosoft ? ' microsoft' : ''}`;
     const initial = escapeHtml((account.username || '?').charAt(0).toUpperCase());
     const uuid = escapeHtml(account.uuid ? `${account.uuid.slice(0, 8)}…` : 'No UUID');
+    const status = isMicrosoft
+      ? (account.tokenExpired ? 'Microsoft · session refresh needed' : 'Microsoft · online & skins')
+      : 'Offline profile';
     item.innerHTML = `
       <div class="account-avatar">${initial}</div>
       <div class="account-info">
         <span class="account-name">${escapeHtml(account.username)}</span>
         <span class="account-uuid">${uuid}</span>
-        <span class="account-status"><i class="account-status-dot"></i><span class="account-status-label">Offline profile</span></span>
+        <span class="account-status"><i class="account-status-dot"></i><span class="account-status-label">${status}</span></span>
       </div>
       <div class="account-actions">
+        ${isMicrosoft ? '<button class="button button-quiet skin-btn" type="button">Skin</button>' : ''}
         <button class="button button-subtle select-btn" type="button">${selected ? 'Selected' : 'Select'}</button>
         <button class="button button-quiet delete-btn" type="button" aria-label="Delete ${escapeHtml(account.username)}">×</button>
       </div>`;
     item.querySelector('.select-btn').addEventListener('click', (event) => {
       event.stopPropagation();
       selectAccount(account);
+    });
+    item.querySelector('.skin-btn')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      showSkinManager(account);
     });
     item.querySelector('.delete-btn').addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -222,6 +236,230 @@ function updateSelectedAccount() {
   const name = $('#selected-name');
   if (panel) panel.style.display = account ? 'block' : 'none';
   if (name && account) name.textContent = account.username;
+}
+
+// Microsoft device-code login
+function showMicrosoftModal() {
+  $('#microsoft-modal').style.display = 'flex';
+  $('#microsoft-login-message').textContent = 'Requesting a sign-in code…';
+  $('#microsoft-user-code').textContent = '••••••••';
+  $('#microsoft-login-status').textContent = 'Connecting securely to Microsoft…';
+  $('#microsoft-login-status').className = 'skin-status';
+}
+
+async function closeMicrosoftModal(cancelPending = true) {
+  if (state.microsoftLoginTimer) window.clearTimeout(state.microsoftLoginTimer);
+  state.microsoftLoginTimer = null;
+  const loginId = state.microsoftLoginId;
+  state.microsoftLoginId = null;
+  $('#microsoft-modal').style.display = 'none';
+  if (cancelPending && loginId) {
+    await api(`/api/accounts/microsoft/cancel/${encodeURIComponent(loginId)}`, { method: 'POST' }).catch(() => {});
+  }
+}
+
+async function startMicrosoftLogin() {
+  const button = $('#account-microsoft');
+  button.disabled = true;
+  showMicrosoftModal();
+  try {
+    const login = await api('/api/accounts/microsoft/start', { method: 'POST', body: { remember: true } });
+    state.microsoftLoginId = login.loginId;
+    $('#microsoft-user-code').textContent = login.userCode;
+    $('#microsoft-login-link').href = login.verificationUri || 'https://www.microsoft.com/link';
+    $('#microsoft-login-message').textContent = login.message || 'Open Microsoft sign-in and enter this one-time code.';
+    $('#microsoft-login-status').textContent = 'Waiting for you to finish signing in…';
+    pollMicrosoftLogin(Math.max(2, Number(login.interval) || 5));
+  } catch (error) {
+    $('#microsoft-login-status').textContent = error.message;
+    $('#microsoft-login-status').className = 'skin-status error';
+    reportError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function pollMicrosoftLogin(intervalSeconds) {
+  const loginId = state.microsoftLoginId;
+  if (!loginId) return;
+  try {
+    const result = await api(`/api/accounts/microsoft/status/${encodeURIComponent(loginId)}`);
+    if (result.status === 'complete') {
+      await closeMicrosoftModal(false);
+      await loadSettings();
+      await loadAccounts();
+      notify(`Signed in as ${result.account?.username || 'your Microsoft account'}.`);
+      return;
+    }
+    if (['error', 'expired', 'cancelled', 'unknown'].includes(result.status)) {
+      $('#microsoft-login-status').textContent = result.error || 'Microsoft sign-in was not completed.';
+      $('#microsoft-login-status').className = 'skin-status error';
+      state.microsoftLoginId = null;
+      return;
+    }
+    $('#microsoft-login-status').textContent = result.status === 'authenticating'
+      ? 'Microsoft approved the code. Connecting to Minecraft services…'
+      : 'Waiting for you to finish signing in…';
+  } catch (error) {
+    $('#microsoft-login-status').textContent = `Still waiting… ${error.message}`;
+  }
+  state.microsoftLoginTimer = window.setTimeout(() => pollMicrosoftLogin(intervalSeconds), intervalSeconds * 1000);
+}
+
+// Skin manager and pixel-perfect 2D player preview
+function setSkinStatus(message, level = '') {
+  const target = $('#skin-status');
+  target.textContent = message;
+  target.className = `skin-status${level ? ` ${level}` : ''}`;
+}
+
+function resetSkinManager() {
+  state.skinImageData = '';
+  state.skinSourceUrl = '';
+  $('#skin-file').value = '';
+  $('#skin-url').value = '';
+  $('#skin-apply').disabled = true;
+  $('#skin-preview').style.display = 'none';
+  $('#skin-preview-empty').style.display = 'block';
+  $('#skin-preview-size').textContent = 'No skin selected';
+  $('#skin-preview-source').textContent = '64×64 or legacy 64×32 PNG';
+  setSkinStatus('Skin changes are sent only to the official Minecraft profile service.');
+}
+
+function showSkinManager(account) {
+  if (account.type !== 'microsoft') {
+    notify('Sign in with Microsoft to publish a skin.', 'error');
+    return;
+  }
+  state.skinAccountId = account.id;
+  resetSkinManager();
+  $('#skin-account-name').textContent = account.username;
+  $('#skin-variant').value = String(account.skinVariant || 'classic').toLowerCase() === 'slim' ? 'slim' : 'classic';
+  $('#skin-modal').style.display = 'flex';
+  if (account.skinUrl) {
+    api('/api/skins/preview', { method: 'POST', body: { sourceUrl: account.skinUrl.replace(/^http:\/\/textures\.minecraft\.net/i, 'https://textures.minecraft.net') } })
+      .then((preview) => renderSkinPreview(preview.dataUrl, 'Current Minecraft skin', preview.metadata, false))
+      .catch(() => {});
+  }
+}
+
+function hideSkinManager() {
+  $('#skin-modal').style.display = 'none';
+  state.skinAccountId = null;
+  state.skinImageData = '';
+  state.skinSourceUrl = '';
+}
+
+function skinPart(context, image, source, destination) {
+  context.drawImage(image, source[0], source[1], source[2], source[3], destination[0], destination[1], destination[2], destination[3]);
+}
+
+function renderSkinPreview(dataUrl, sourceLabel, metadata = {}, canApply = true) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      if (image.width !== 64 || ![32, 64].includes(image.height)) {
+        reject(new Error(`Minecraft Java skins must be 64×64 or legacy 64×32 PNG files (received ${image.width}×${image.height}).`));
+        return;
+      }
+      const canvas = $('#skin-preview');
+      const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = false;
+      const scale = 8;
+      const slim = $('#skin-variant').value === 'slim';
+      const armWidth = slim ? 3 : 4;
+      const leftArmX = slim ? 1 : 0;
+      const rightArmX = 12;
+      const modern = image.height === 64;
+      const draw = (source, destination) => skinPart(
+        context,
+        image,
+        source,
+        destination.map((value) => value * scale)
+      );
+
+      // Base layer: head, body, arms and legs.
+      draw([8, 8, 8, 8], [4, 0, 8, 8]);
+      draw([20, 20, 8, 12], [4, 8, 8, 12]);
+      draw([44, 20, armWidth, 12], [leftArmX, 8, armWidth, 12]);
+      draw(modern ? [36, 52, armWidth, 12] : [44, 20, armWidth, 12], [rightArmX, 8, armWidth, 12]);
+      draw([4, 20, 4, 12], [4, 20, 4, 12]);
+      draw(modern ? [20, 52, 4, 12] : [4, 20, 4, 12], [8, 20, 4, 12]);
+
+      // Outer layer (hat, jacket, sleeves and trousers).
+      draw([40, 8, 8, 8], [4, 0, 8, 8]);
+      if (modern) {
+        draw([20, 36, 8, 12], [4, 8, 8, 12]);
+        draw([44, 36, armWidth, 12], [leftArmX, 8, armWidth, 12]);
+        draw([52, 52, armWidth, 12], [rightArmX, 8, armWidth, 12]);
+        draw([4, 36, 4, 12], [4, 20, 4, 12]);
+        draw([4, 52, 4, 12], [8, 20, 4, 12]);
+      }
+
+      canvas.style.display = 'block';
+      $('#skin-preview-empty').style.display = 'none';
+      $('#skin-preview-size').textContent = `${image.width}×${image.height} · ${slim ? 'Slim' : 'Classic'}`;
+      $('#skin-preview-source').textContent = sourceLabel;
+      $('#skin-apply').disabled = !canApply;
+      if (canApply) state.skinImageData = dataUrl;
+      resolve({ width: image.width, height: image.height, ...metadata });
+    };
+    image.onerror = () => reject(new Error('The selected file could not be decoded as a PNG skin.'));
+    image.src = dataUrl;
+  });
+}
+
+async function previewSkinFile(file) {
+  if (!file) return;
+  if (file.size > 512 * 1024) throw new Error('Skin PNG is larger than 512 KB.');
+  let dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the selected skin file.'));
+    reader.readAsDataURL(file);
+  });
+  dataUrl = String(dataUrl).replace(/^data:[^;]*;base64,/, 'data:image/png;base64,');
+  state.skinSourceUrl = '';
+  await renderSkinPreview(dataUrl, file.name, {}, true);
+  setSkinStatus('Preview ready. Choose the correct arm model, then apply it.', 'success');
+}
+
+async function previewSkinUrl() {
+  const sourceUrl = $('#skin-url').value.trim();
+  if (!sourceUrl) throw new Error('Paste a direct skin PNG URL or a NameMC / Skindex skin page URL.');
+  const button = $('#skin-url-preview');
+  button.disabled = true;
+  setSkinStatus('Downloading and validating skin…');
+  try {
+    const preview = await api('/api/skins/preview', { method: 'POST', body: { sourceUrl } });
+    state.skinSourceUrl = preview.sourceUrl || sourceUrl;
+    await renderSkinPreview(preview.dataUrl, new URL(state.skinSourceUrl).hostname, preview.metadata, true);
+    setSkinStatus('Preview ready. Choose the correct arm model, then apply it.', 'success');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function applySelectedSkin() {
+  if (!state.skinAccountId || !state.skinImageData) throw new Error('Choose and preview a skin first.');
+  const button = $('#skin-apply');
+  button.disabled = true;
+  setSkinStatus('Uploading skin to the official Minecraft profile service…');
+  try {
+    const result = await api(`/api/accounts/${encodeURIComponent(state.skinAccountId)}/skin`, {
+      method: 'POST',
+      body: { imageData: state.skinImageData, variant: $('#skin-variant').value }
+    });
+    await loadAccounts();
+    setSkinStatus('Skin applied. Minecraft may take a moment to refresh it in-game.', 'success');
+    notify(`Skin updated for ${result.account?.username || 'your account'}.`);
+  } catch (error) {
+    setSkinStatus(error.message, 'error');
+    throw error;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Versions
@@ -469,7 +707,7 @@ async function refreshLoaderVersions() {
     const vers = data.versions || [];
     sel.innerHTML = '<option value="">Latest</option>';
     for (const v of vers.slice(0, 50)) {
-      const id = v.version || v.id || v.forgeVersion || v.neoForgeVersion || '';
+      const id = v.version || v.forgeVersion || v.neoForgeVersion || v.id || '';
       const o = document.createElement('option');
       o.value = id;
       o.textContent = id;
@@ -766,6 +1004,28 @@ function bindUi() {
   $('#accounts-refresh')?.addEventListener('click', () => loadAccounts().catch(reportError));
   $('#account-add')?.addEventListener('click', addAccount);
   $('#account-username')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') addAccount(); });
+  $('#account-microsoft')?.addEventListener('click', () => startMicrosoftLogin());
+  $('#microsoft-user-code')?.addEventListener('click', async () => {
+    const code = $('#microsoft-user-code').textContent;
+    await navigator.clipboard?.writeText(code).catch(() => {});
+    notify('Microsoft sign-in code copied.');
+  });
+  $('#microsoft-modal-close')?.addEventListener('click', () => closeMicrosoftModal(true));
+  $('#microsoft-login-cancel')?.addEventListener('click', () => closeMicrosoftModal(true));
+  $('#microsoft-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) closeMicrosoftModal(true); });
+
+  $('#skin-file-button')?.addEventListener('click', () => $('#skin-file').click());
+  $('#skin-file')?.addEventListener('change', (event) => previewSkinFile(event.target.files?.[0]).catch((error) => { setSkinStatus(error.message, 'error'); reportError(error); }));
+  $('#skin-url-preview')?.addEventListener('click', () => previewSkinUrl().catch((error) => { setSkinStatus(error.message, 'error'); reportError(error); }));
+  $('#skin-url')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') previewSkinUrl().catch((error) => { setSkinStatus(error.message, 'error'); reportError(error); }); });
+  $('#skin-variant')?.addEventListener('change', () => {
+    if (state.skinImageData) renderSkinPreview(state.skinImageData, $('#skin-preview-source').textContent, {}, true).catch(reportError);
+  });
+  $('#skin-apply')?.addEventListener('click', () => applySelectedSkin().catch(reportError));
+  $('#skin-modal-close')?.addEventListener('click', hideSkinManager);
+  $('#skin-cancel')?.addEventListener('click', hideSkinManager);
+  $('#skin-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideSkinManager(); });
+
   $('#settings-save')?.addEventListener('click', () => saveSettings().then(() => notify('Settings saved.')).catch(reportError));
   $('#settings-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
   $('#refresh-news')?.addEventListener('click', () => loadNews().catch(reportError));
@@ -836,7 +1096,12 @@ function bindUi() {
       const pages = ['home','versions','modpacks','accounts','settings'];
       navigateTo(pages[Number(event.key)-1]);
     }
-    if (event.key === 'Escape') { hideModal(); hideModpackModal(); }
+    if (event.key === 'Escape') {
+      hideModal();
+      hideModpackModal();
+      hideSkinManager();
+      if ($('#microsoft-modal')?.style.display !== 'none') closeMicrosoftModal(true);
+    }
   });
 }
 

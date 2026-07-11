@@ -32,10 +32,19 @@ function validateUsername(username) {
 
 function publicAccount(account) {
   if (!account) return null;
-  const { accessToken, refreshToken, xblToken, xstsToken, ...safe } = account;
+  const {
+    accessToken,
+    refreshToken,
+    xblToken,
+    xstsToken,
+    mcToken,
+    msAccessToken,
+    deviceCode,
+    ...safe
+  } = account;
   return {
     ...safe,
-    hasToken: Boolean(accessToken || account.mcToken),
+    hasToken: Boolean(accessToken || mcToken),
     tokenExpired: account.expiresAt ? Date.parse(account.expiresAt) <= Date.now() : false
   };
 }
@@ -106,6 +115,7 @@ async function upsertMicrosoftAccount(profile) {
     uuid: profile.uuid,
     type: 'microsoft',
     skinUrl: profile.skinUrl || '',
+    skinVariant: String(profile.skinVariant || 'classic').toLowerCase(),
     mcToken: profile.mcToken,
     refreshToken: profile.refreshToken || '',
     msAccessToken: profile.msAccessToken || '',
