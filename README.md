@@ -10,6 +10,11 @@ toolchain, or extra runtime.
 > launch a version, it reads Mojang's public version manifest and downloads the
 > official files from Mojang/Microsoft-hosted URLs on the user's machine.
 
+> **Security note:** Amethyst binds to `127.0.0.1` (localhost) only. Do **not** port
+> forward the launcher's port to the internet. The backend has no authentication
+> and exposes full control over the local system (file access, process launch,
+> Java downloads, etc.). Exposing it publicly would allow remote code execution.
+
 ## Quick start
 
 Requirements:
@@ -78,7 +83,7 @@ files. No build command is needed.
 - Preview classic/slim and legacy skin PNGs before applying them.
 - Import a local PNG, a direct HTTPS PNG URL, or a NameMC / The Skindex skin page; quick links are also provided for Planet Minecraft and Nova Skin.
 
-Offline accounts cannot publish an official skin because Minecraft's profile service requires an authenticated, game-owning Microsoft account.
+Offline accounts cannot publish an official skin because Minecraft's profile service requires an authenticated, game-owning Microsoft account. For offline accounts, use a client-side skin mod such as **CustomSkinLoader** (Fabric/Forge/NeoForge/Quilt) to load custom skins from a local file or skin server.
 
 ### Installations and instances
 

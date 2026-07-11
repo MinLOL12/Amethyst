@@ -7,6 +7,7 @@ const state = {
   settings: null,
   accounts: [],
   versions: [],
+  installedVersions: [],
   modpacks: [],
   currentPage: 'home',
   currentPercent: 0,
@@ -618,11 +619,28 @@ async function loadVersions() {
   log(`Loaded ${state.versions.length} official versions from Mojang.`);
 }
 
+async function loadInstalledVersions() {
+  try {
+    const { versions } = await api('/api/versions/installed');
+    state.installedVersions = versions || [];
+    log(`Found ${state.installedVersions.length} installed versions.`);
+  } catch (error) {
+    state.installedVersions = [];
+    log(`Could not load installed versions: ${error.message}`, 'error');
+  }
+}
+
+function isVersionInstalled(versionId) {
+  return state.installedVersions.some((v) => v.id === versionId);
+}
+
 function renderVersionSelect() {
   const select = $('#ql-version');
   if (!select) return;
   select.innerHTML = '<option value="">Select a version…</option>';
-  for (const version of state.versions) {
+  // Quick Launch only shows installed versions
+  const installed = state.versions.filter((v) => isVersionInstalled(v.id));
+  for (const version of installed) {
     const option = document.createElement('option');
     option.value = version.id;
     option.textContent = `${version.id} · ${version.type}`;
@@ -673,7 +691,22 @@ function selectVersion(id, type = 'release') {
   $('#detail-ver').textContent = id;
   $('#detail-type').textContent = type;
   $('#detail-dir').textContent = state.settings?.gameDir || '—';
+  updateDetailInstallButton(id);
   refreshLoaderVersions().catch(reportError);
+}
+
+function updateDetailInstallButton(versionId) {
+  const installBtn = $('#detail-install');
+  const uninstallBtn = $('#detail-uninstall');
+  if (!installBtn) return;
+  const installed = isVersionInstalled(versionId);
+  installBtn.innerHTML = installed
+    ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Play</span>'
+    : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Install &amp; play</span>';
+  // Show/hide uninstall button
+  if (uninstallBtn) {
+    uninstallBtn.style.display = installed ? 'inline-flex' : 'none';
+  }
 }
 
 function populateMcSelect() {
@@ -1129,7 +1162,7 @@ function reportError(error) {
 // Live backend events
 function connectEvents() {
   const source = new EventSource('/api/events');
-  source.onmessage = (message) => {
+  source.onmessage = async (message) => {
     let event;
     try { event = JSON.parse(message.data); } catch { return; }
     switch (event.type) {
@@ -1153,6 +1186,12 @@ function connectEvents() {
         if (!state.gameRunning) {
           updateModal('✓', 'Everything is ready.', true);
           notify(`${event.name} completed.`, 'success');
+        }
+        // Refresh installed versions after an install task completes
+        if (event.name.startsWith('Install ')) {
+          await loadInstalledVersions();
+          renderVersionSelect();
+          if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId);
         }
         log(`Complete: ${event.name}`);
         break;
@@ -1297,6 +1336,16 @@ function bindUi() {
   $('#ql-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
 
   $('#versions-refresh')?.addEventListener('click', () => loadVersions().catch(reportError));
+  $('#versions-import-prism')?.addEventListener('click', async () => {
+    const pathInput = prompt('Enter the full path to the Prism Launcher instance folder:');
+    if (!pathInput) return;
+    try {
+      const { job } = await api('/api/instances/import-prism', { method: 'POST', body: { path: pathInput.trim() } });
+      notify('Prism instance import started.');
+    } catch (error) {
+      reportError(error);
+    }
+  });
   $('#versions-search')?.addEventListener('input', (event) => { state.filterText = event.target.value; renderVersionList(); });
   $$('.filter-tab').forEach((tab) => tab.addEventListener('click', () => {
     const parent = tab.closest('.versions-list-panel, #mp-tabs') || document;
@@ -1315,6 +1364,19 @@ function bindUi() {
       setBusy(true, `Launching ${state.selectedVersionId}…`);
     }
     doInstall(state.selectedVersionId).catch(reportError);
+  });
+  $('#detail-uninstall')?.addEventListener('click', async () => {
+    if (!state.selectedVersionId) return;
+    if (!confirm(`Uninstall ${state.selectedVersionId}? This will delete the version files.`)) return;
+    try {
+      await api(`/api/versions/${encodeURIComponent(state.selectedVersionId)}/uninstall`, { method: 'POST' });
+      notify(`${state.selectedVersionId} uninstalled.`);
+      await loadInstalledVersions();
+      renderVersionSelect();
+      updateDetailInstallButton(state.selectedVersionId);
+    } catch (error) {
+      reportError(error);
+    }
   });
   $('#detail-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
 
@@ -1461,6 +1523,8 @@ async function boot() {
   await loadSettings();
   const results = await Promise.allSettled([loadAccounts(), loadVersions(), loadJava(), loadNews(), loadModpacks()]);
   results.filter((result) => result.status === 'rejected').forEach((result) => reportError(result.reason));
+  await loadInstalledVersions();
+  renderVersionSelect();
   if (state.settings?.lastVersion) {
     const version = state.versions.find((item) => item.id === state.settings.lastVersion);
     if (version) selectVersion(version.id, version.type);
