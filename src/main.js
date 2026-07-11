@@ -92,29 +92,33 @@ function printLauncherUrl(url) {
   console.log('Keep this terminal open while you use the launcher.');
 }
 
-async function startLauncher() {
+async function startBackend() {
   await initializeStore();
 
   const server = createServer();
   await listen(server, requestedPort(process.env.PORT));
 
   const address = server.address();
-  const url = `http://127.0.0.1:${address.port}/`;
-  printLauncherUrl(url);
+  return { server, url: `http://127.0.0.1:${address.port}/` };
+}
+
+async function startLauncher() {
+  const result = await startBackend();
+  printLauncherUrl(result.url);
 
   if (process.env.AMETHYST_NO_OPEN) {
     console.log('Automatic browser opening is disabled; use the URL above.');
   } else {
     console.log('Opening your default browser...');
-    void openBrowser(url).then((opened) => {
+    void openBrowser(result.url).then((opened) => {
       if (!opened) {
         console.warn('\nCould not open a browser automatically. Open this URL manually:');
-        console.warn(`\n  ${url}\n`);
+        console.warn(`\n  ${result.url}\n`);
       }
     });
   }
 
-  return { server, url };
+  return result;
 }
 
 if (require.main === module) {
@@ -128,5 +132,6 @@ module.exports = {
   browserCommands,
   openBrowser,
   requestedPort,
+  startBackend,
   startLauncher
 };

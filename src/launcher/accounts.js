@@ -8,7 +8,8 @@ function paths() {
   return {
     root,
     accounts: path.join(root, 'accounts.json'),
-    settings: path.join(root, 'settings.json')
+    settings: path.join(root, 'settings.json'),
+    tokens: path.join(root, 'ms-tokens.json')
   };
 }
 
@@ -29,6 +30,16 @@ function validateUsername(username) {
   return clean;
 }
 
+function publicAccount(account) {
+  if (!account) return null;
+  const { accessToken, refreshToken, xblToken, xstsToken, ...safe } = account;
+  return {
+    ...safe,
+    hasToken: Boolean(accessToken || account.mcToken),
+    tokenExpired: account.expiresAt ? Date.parse(account.expiresAt) <= Date.now() : false
+  };
+}
+
 async function initializeStore() {
   const p = paths();
   await ensureDir(p.root);
@@ -38,14 +49,31 @@ async function initializeStore() {
 }
 
 async function listAccounts() {
+  const all = await readJson(paths().accounts, []);
+  return all.map(publicAccount);
+}
+
+async function listAccountsRaw() {
   return readJson(paths().accounts, []);
+}
+
+async function getAccountRaw(accountId) {
+  const all = await listAccountsRaw();
+  return all.find((item) => item.id === accountId) || null;
+}
+
+async function saveAccounts(accounts) {
+  await writeJson(paths().accounts, accounts);
+  return accounts;
 }
 
 async function addOfflineAccount(username) {
   const clean = validateUsername(username);
-  const all = await listAccounts();
-  const existing = all.find((account) => account.username.toLowerCase() === clean.toLowerCase());
-  if (existing) return existing;
+  const all = await listAccountsRaw();
+  const existing = all.find(
+    (account) => account.type === 'offline' && account.username.toLowerCase() === clean.toLowerCase()
+  );
+  if (existing) return publicAccount(existing);
 
   const now = new Date().toISOString();
   const account = {
@@ -57,34 +85,89 @@ async function addOfflineAccount(username) {
     lastUsedAt: now
   };
   all.push(account);
-  await writeJson(paths().accounts, all);
+  await saveAccounts(all);
 
   const settings = await readSettings();
   settings.lastAccountId = account.id;
   await saveSettings(settings);
-  return account;
+  return publicAccount(account);
+}
+
+async function upsertMicrosoftAccount(profile) {
+  const all = await listAccountsRaw();
+  const now = new Date().toISOString();
+  const existingIndex = all.findIndex(
+    (account) => account.type === 'microsoft' && (account.uuid === profile.uuid || account.username === profile.username)
+  );
+
+  const account = {
+    id: profile.uuid || crypto.randomUUID(),
+    username: profile.username,
+    uuid: profile.uuid,
+    type: 'microsoft',
+    skinUrl: profile.skinUrl || '',
+    mcToken: profile.mcToken,
+    refreshToken: profile.refreshToken || '',
+    msAccessToken: profile.msAccessToken || '',
+    expiresAt: profile.expiresAt || '',
+    xuid: profile.xuid || '',
+    createdAt: existingIndex >= 0 ? all[existingIndex].createdAt : now,
+    lastUsedAt: now,
+    remembered: profile.remembered !== false
+  };
+
+  if (existingIndex >= 0) {
+    all[existingIndex] = { ...all[existingIndex], ...account, createdAt: all[existingIndex].createdAt };
+  } else {
+    all.push(account);
+  }
+
+  await saveAccounts(all);
+  const settings = await readSettings();
+  settings.lastAccountId = account.id;
+  await saveSettings(settings);
+  return publicAccount(account);
+}
+
+async function updateAccountTokens(accountId, tokens) {
+  const all = await listAccountsRaw();
+  const account = all.find((item) => item.id === accountId);
+  if (!account) throw new Error('Account not found');
+  Object.assign(account, tokens, { lastUsedAt: new Date().toISOString() });
+  await saveAccounts(all);
+  return publicAccount(account);
 }
 
 async function touchAccount(accountId) {
-  const all = await listAccounts();
+  const all = await listAccountsRaw();
   const account = all.find((item) => item.id === accountId);
   if (account) {
     account.lastUsedAt = new Date().toISOString();
-    await writeJson(paths().accounts, all);
+    await saveAccounts(all);
   }
-  return account;
+  return publicAccount(account);
+}
+
+async function setActiveAccount(accountId) {
+  const account = await getAccountRaw(accountId);
+  if (!account) throw new Error('Account not found');
+  const settings = await readSettings();
+  settings.lastAccountId = accountId;
+  await saveSettings(settings);
+  await touchAccount(accountId);
+  return publicAccount(account);
 }
 
 async function removeAccount(accountId) {
-  const all = await listAccounts();
+  const all = await listAccountsRaw();
   const next = all.filter((account) => account.id !== accountId);
-  await writeJson(paths().accounts, next);
+  await saveAccounts(next);
   const settings = await readSettings();
   if (settings.lastAccountId === accountId) {
     settings.lastAccountId = next[0]?.id || '';
     await saveSettings(settings);
   }
-  return next;
+  return next.map(publicAccount);
 }
 
 async function readSettings() {
@@ -95,9 +178,16 @@ async function readSettings() {
 
 async function saveSettings(partial) {
   const defaults = getDefaultSettings();
-  const next = { ...defaults, ...partial };
+  const current = await readSettings();
+  const next = { ...defaults, ...current, ...partial };
   next.memoryMb = Math.min(16384, Math.max(512, Number(next.memoryMb) || defaults.memoryMb));
+  next.resolutionWidth = Math.min(7680, Math.max(640, Number(next.resolutionWidth) || defaults.resolutionWidth));
+  next.resolutionHeight = Math.min(4320, Math.max(480, Number(next.resolutionHeight) || defaults.resolutionHeight));
+  next.fullscreen = Boolean(next.fullscreen);
   next.maxConcurrentDownloads = Math.min(16, Math.max(1, Number(next.maxConcurrentDownloads) || defaults.maxConcurrentDownloads));
+  next.rememberMicrosoftLogin = next.rememberMicrosoftLogin !== false;
+  next.jvmArgs = String(next.jvmArgs || '');
+  next.launchArgs = String(next.launchArgs || '');
   await writeJson(paths().settings, next);
   return next;
 }
@@ -105,11 +195,17 @@ async function saveSettings(partial) {
 module.exports = {
   initializeStore,
   listAccounts,
+  listAccountsRaw,
+  getAccountRaw,
   addOfflineAccount,
+  upsertMicrosoftAccount,
+  updateAccountTokens,
   removeAccount,
   touchAccount,
+  setActiveAccount,
   readSettings,
   saveSettings,
   offlineUuid,
-  validateUsername
+  validateUsername,
+  publicAccount
 };

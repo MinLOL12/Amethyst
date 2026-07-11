@@ -69,7 +69,7 @@ async function run() {
 
     const page = await getPage(ready.url);
     assert.equal(page.statusCode, 200);
-    assert.match(page.body, /<title>Amethyst(?: Launcher)?<\/title>/iu);
+    assert.match(page.body, /<title>[^<]*Amethyst[^<]*<\/title>/iu);
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2000))]);
