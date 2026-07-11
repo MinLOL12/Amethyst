@@ -3,69 +3,70 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Amethyst Launcher</title>
+  <meta name="theme-color" content="#0c0a16">
+  <title>Amethyst · Minecraft Launcher</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <!-- Main layout -->
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
   <div class="shell">
-
-    <!-- Left sidebar navigation -->
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="gem">◆</div>
-        <div>
-          <h1>Amethyst</h1>
-          <p>Minecraft Launcher</p>
-        </div>
-      </div>
+      <a class="brand" href="#home" aria-label="Amethyst home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="presentation"><path d="M16 2.5 28.5 9v14L16 30 3.5 23V9L16 2.5Z"/><path d="m9.5 12.5 6.5-3.5 6.5 3.5v7L16 23l-6.5-3.5v-7Z"/></svg>
+        </span>
+        <span class="brand-copy"><strong>Amethyst</strong><small>VANILLA LAUNCHER</small></span>
+      </a>
 
-      <nav class="nav-list">
-        <a class="nav-item active" data-page="home" href="#">
-          <span class="nav-icon">🏠</span>
-          <span>Home</span>
+      <div class="sidebar-label">Workspace</div>
+      <nav class="nav-list" aria-label="Primary navigation">
+        <a class="nav-item active" data-page="home" href="#home">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg>
+          <span>Overview</span><kbd>1</kbd>
         </a>
-        <a class="nav-item" data-page="versions" href="#">
-          <span class="nav-icon">📦</span>
-          <span>Versions</span>
+        <a class="nav-item" data-page="versions" href="#versions">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"/></svg>
+          <span>Versions</span><kbd>2</kbd>
         </a>
-        <a class="nav-item" data-page="accounts" href="#">
-          <span class="nav-icon">👤</span>
-          <span>Accounts</span>
+        <a class="nav-item" data-page="modpacks" href="#modpacks">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Modpacks</span><kbd>3</kbd>
         </a>
-        <a class="nav-item" data-page="settings" href="#">
-          <span class="nav-icon">⚙️</span>
-          <span>Settings</span>
+        <a class="nav-item" data-page="accounts" href="#accounts">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.2 3.1-5 7-5s6.4 1.8 7 5"/></svg>
+          <span>Accounts</span><kbd>4</kbd>
+        </a>
+        <a class="nav-item" data-page="settings" href="#settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/><circle cx="12" cy="12" r="4"/></svg>
+          <span>Settings</span><kbd>5</kbd>
         </a>
       </nav>
 
+      <div class="sidebar-spacer"></div>
       <div class="sidebar-footer">
-        <div class="status-row">
-          <span class="status-dot" id="status-dot"></span>
-          <span id="status-text">Disconnected</span>
+        <div class="connection-card">
+          <span class="status-dot offline" id="status-dot"></span>
+          <div><strong id="status-text">Connecting</strong><small>Local Node.js backend</small></div>
+          <span class="connection-pulse" aria-hidden="true"></span>
         </div>
         <span class="version-label">v<span id="app-version">0.2.0</span></span>
       </div>
     </aside>
 
-    <!-- Main content area -->
     <main class="content">
-
-      <!-- Top status bar -->
-      <div class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-path" id="topbar-path"></span>
-        </div>
+      <header class="topbar">
+        <div class="breadcrumbs"><span class="breadcrumb-home">AMETHYST</span><span>/</span><strong id="topbar-path">Overview</strong></div>
         <div class="topbar-right">
-          <div class="topbar-progress" id="topbar-progress">
+          <div class="topbar-progress" id="topbar-progress" aria-live="polite">
             <div class="progress-mini-bar"><div class="progress-mini-fill" id="progress-mini-fill"></div></div>
             <span id="progress-mini-text"></span>
           </div>
-          <span id="topbar-status"></span>
+          <span class="topbar-status"><span class="status-dot online"></span><span id="topbar-status">Ready</span></span>
         </div>
-      </div>
+      </header>
 
-      <!-- ===== PAGE: HOME ===== -->
       <div class="page active" id="page-home">
 
         <!-- Welcome card -->
@@ -75,11 +76,12 @@
             <h2>Launch Minecraft with mods</h2>
             <p>A dark purple Minecraft launcher with full mod loader support. Install Fabric, Quilt, or Forge and launch with your mods — Amethyst handles the rest. All game files are downloaded from official servers.</p>
           </div>
-          <div class="actions">
-            <button id="home-browse" class="primary">Browse Versions</button>
-            <button id="home-accounts" class="secondary">Manage Accounts</button>
+          <div class="hero-art" aria-hidden="true">
+            <div class="hero-glow"></div><div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div>
+            <div class="hero-crystal"><svg viewBox="0 0 120 120"><path d="M60 7 102 31v48l-42 24L18 79V31L60 7Z"/><path d="m60 7 16 40-16 56-16-56L60 7Z"/><path d="m18 31 42 16 42-16M44 47h32"/></svg></div>
+            <span class="art-label label-top">OFFICIAL</span><span class="art-label label-bottom">VANILLA / 01</span>
           </div>
-        </div>
+        </section>
 
         <!-- Quick launch -->
         <div class="card">
@@ -114,30 +116,34 @@
           </div>
         </div>
 
-        <!-- News section -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon">📰</span>
-            <h2>Latest News</h2>
-            <div class="spacer"></div>
-            <button id="refresh-news" class="ghost">Refresh</button>
+        <section class="card launch-card">
+          <div class="section-heading"><div><span class="section-eyebrow">QUICK LAUNCH</span><h2>Back to your world</h2></div><span class="section-status"><span class="status-dot online"></span>Offline mode</span></div>
+          <div class="launch-controls">
+            <label class="select-wrap"><span>VERSION</span><select id="ql-version" aria-label="Select Minecraft version"></select></label>
+            <label class="range-wrap"><span class="range-heading"><span>MEMORY</span><strong><span id="ql-memory-value">2048</span> MB</strong></span><input id="ql-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Memory allocation"></label>
+            <button id="ql-launch" class="button primary launch-button" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Launch game</span></button>
           </div>
-          <div class="card-divider"></div>
-          <div class="news-grid" id="news">
-            <p class="muted">Loading news…</p>
-          </div>
+        </section>
+
+        <section class="card news-card">
+          <div class="section-heading"><div><span class="section-eyebrow">FROM THE MINECRAFT TEAM</span><h2>Latest news</h2></div><button id="refresh-news" class="button button-quiet">Refresh <span>↻</span></button></div>
+          <div class="news-grid" id="news"><p class="muted">Loading news…</p></div>
+        </section>
+      </div>
+
+      <div class="page" id="page-versions">
+        <div class="page-heading"><div><span class="section-eyebrow">YOUR LIBRARY</span><h1>Versions</h1><p>Every official release, right where you need it.</p></div><div class="heading-actions"><button id="versions-refresh" class="button button-quiet">↻ <span>Refresh</span></button><label class="search-wrap"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="versions-search" placeholder="Search versions…" aria-label="Search versions"></label></div></div>
+        <div class="versions-layout">
+          <section class="card versions-list-panel"><div class="filter-tabs"><button class="filter-tab active" data-filter="all">All</button><button class="filter-tab" data-filter="release">Release</button><button class="filter-tab" data-filter="snapshot">Snapshot</button></div><div class="version-items" id="version-list"></div></section>
+          <section class="card versions-detail-panel" id="version-detail">
+            <div class="detail-empty" id="detail-empty"><div class="empty-glyph">◈</div><strong>Select a version</strong><p>Choose a release from your library<br>to see its launch details.</p></div>
+            <div class="detail-content" id="detail-content" style="display:none"><div class="detail-head"><div><span class="section-eyebrow">SELECTED VERSION</span><div class="detail-title-row"><span class="detail-id" id="detail-id">—</span><span class="detail-badge" id="detail-badge">release</span></div></div><span class="detail-cube">◈</span></div><span class="detail-date" id="detail-date">—</span><div class="detail-rule"></div><button id="detail-install" class="button primary detail-launch"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 6 5-6 5V3Z"/></svg><span>Install &amp; play</span></button><div class="detail-info"><div class="info-row"><span>GAME DIRECTORY</span><strong id="detail-dir">—</strong></div><div class="info-row"><span>VERSION ID</span><strong id="detail-ver">—</strong></div><div class="info-row"><span>RELEASE TYPE</span><strong id="detail-type">—</strong></div></div><div class="detail-rule"></div><div class="detail-memory"><div class="range-heading"><span>RAM ALLOCATION</span><strong id="detail-ram-label">2 GB</strong></div><div class="memory-slider-row"><span>512 MB</span><input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Version memory allocation"><span>16 GB</span></div></div></div>
+          </section>
         </div>
       </div>
 
-      <!-- ===== PAGE: VERSIONS ===== -->
-      <div class="page" id="page-versions">
-        <div class="page-header">
-          <h2>Versions</h2>
-          <div class="spacer"></div>
-          <button id="versions-refresh" class="ghost">↻ Refresh</button>
-          <input id="versions-search" class="search-input" placeholder="Search versions...">
-        </div>
-
+      <div class="page" id="page-modpacks">
+        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Create packs with any loader and install mods from Modrinth or CurseForge.</p></div><div class="heading-actions"><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
         <div class="versions-layout">
           <!-- Version list panel -->
           <div class="card versions-list-panel">
@@ -203,202 +209,146 @@
                   <input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048">
                   <span>16 GB</span>
                 </div>
+          <section class="card versions-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Modpacks</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="version-items" id="modpack-list"></div></section>
+          <section class="card versions-detail-panel" id="modpack-detail">
+            <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create a new pack or select one from the list.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
+            <div class="detail-content" id="modpack-content" style="display:none">
+              <div class="detail-head"><div><span class="section-eyebrow">MODPACK</span><div class="detail-title-row"><span class="detail-id" id="mp-name">—</span><span class="detail-badge" id="mp-badge-loader">vanilla</span><span class="detail-badge" id="mp-badge-mc">—</span></div><small id="mp-sub" class="muted"></small></div><span class="detail-cube">◫</span></div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <button id="mp-install" class="button primary"><span>Install</span></button>
+                <button id="mp-launch" class="button button-subtle"><span>Launch</span></button>
+                <button id="mp-delete" class="button button-quiet" style="color:#ff7f9f">Delete</button>
               </div>
+              <div class="detail-rule"></div>
+              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="browse">Browse</button><button class="filter-tab" data-tab="settings">Settings</button></div>
+              <div id="mp-tab-mods"><div id="mp-mods-list" style="display:flex; flex-direction:column; gap:8px; margin-top:12px"></div></div>
+              <div id="mp-tab-browse" style="display:none">
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap"><input id="mp-search" placeholder="Search mods…" style="flex:1; min-width:180px"><select id="mp-source" style="width:140px"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select><button id="mp-search-btn" class="button button-quiet">Search</button></div>
+                <div id="mp-browse-info" class="muted" style="font-size:.7rem; margin-top:8px"></div>
+                <div id="mp-browse-results" style="display:flex; flex-direction:column; gap:8px; margin-top:10px"></div>
+              </div>
+              <div id="mp-tab-settings" style="display:none"><div class="detail-info" style="margin-top:12px"><div class="info-row"><span>NAME</span><strong id="mp-set-name">—</strong></div><div class="info-row"><span>MC VERSION</span><strong id="mp-set-mc">—</strong></div><div class="info-row"><span>LOADER</span><strong id="mp-set-loader">—</strong></div><div class="info-row"><span>LOADER VER</span><strong id="mp-set-loader-ver">—</strong></div><div class="info-row"><span>GAME DIR</span><strong id="mp-set-dir">—</strong></div><div class="info-row"><span>MODS DIR</span><strong id="mp-set-mods-dir">—</strong></div><div class="info-row"><span>CUSTOM ID</span><strong id="mp-set-custom">—</strong></div></div></div>
             </div>
-          </div>
+          </section>
         </div>
       </div>
 
-      <!-- ===== PAGE: ACCOUNTS ===== -->
       <div class="page" id="page-accounts">
-        <div class="page-header">
-          <h2>Accounts</h2>
-          <div class="spacer"></div>
-          <button id="accounts-refresh" class="ghost">↻ Refresh</button>
-        </div>
-
+        <div class="page-heading"><div><span class="section-eyebrow">IDENTITY</span><h1>Accounts</h1><p>Use a Microsoft account for online play and official skin changes, or keep a local offline profile.</p></div><button id="accounts-refresh" class="button button-quiet">↻ <span>Refresh</span></button></div>
         <div class="accounts-layout">
-          <!-- Account list -->
-          <div class="card accounts-list-panel">
-            <div class="accounts-list-header">
-              <span>👤 Offline Accounts</span>
-            </div>
-            <div class="account-items" id="account-list">
-              <div class="account-empty">
-                <span class="detail-empty-icon">👻</span>
-                <p>No accounts yet</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Add account panel -->
-          <div class="card accounts-add-panel">
-            <h3>Add Offline Account</h3>
-            <div class="info-banner">
-              <span class="info-banner-icon">ℹ️</span>
-              <div>
-                <strong>Offline Mode Account</strong>
-                <p>Offline accounts can only join offline servers and single-player worlds.</p>
-              </div>
-            </div>
-            <label class="field-label">Username</label>
-            <input id="account-username" placeholder="Enter username..." maxlength="16">
-            <button id="account-add" class="primary add-btn">➕ Add Account</button>
-            <div class="spacer"></div>
-            <div class="selected-account" id="selected-account" style="display:none">
-              <span class="selected-label">Selected Account</span>
-              <span class="selected-name" id="selected-name">—</span>
-            </div>
-          </div>
+          <section class="card accounts-list-panel">
+            <div class="panel-heading"><div><span class="section-eyebrow">PLAYER PROFILES</span><h2>Your accounts</h2></div><span class="panel-count" id="account-panel-count">0</span></div>
+            <div class="account-items" id="account-list"><div class="account-empty"><div class="empty-glyph">◇</div><strong>No accounts yet</strong><p>Add a profile to launch Minecraft.</p></div></div>
+          </section>
+          <section class="card accounts-add-panel">
+            <span class="section-eyebrow">MICROSOFT ACCOUNT</span>
+            <h2>Play online &amp; change skins</h2>
+            <p class="panel-copy">Sign in with Microsoft's device-code flow. Amethyst never asks for your password.</p>
+            <button id="account-microsoft" class="button primary add-btn"><span>Sign in with Microsoft</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5.5v5.5H2zM8.5 2H14v5.5H8.5zM2 8.5h5.5V14H2zM8.5 8.5H14V14H8.5z"/></svg></button>
+            <div class="account-method-divider"><span>OR USE OFFLINE MODE</span></div>
+            <h2>Add an offline account</h2>
+            <p class="panel-copy">Create a local identity for single-player worlds and offline servers.</p>
+            <div class="info-banner"><span class="info-banner-icon">i</span><div><strong>Offline mode</strong><p>Offline profiles cannot publish skins or join authenticated online servers.</p></div></div>
+            <label class="field-label" for="account-username">USERNAME</label>
+            <input id="account-username" placeholder="e.g. Alex" maxlength="16" autocomplete="off">
+            <button id="account-add" class="button button-subtle add-btn"><span>Add offline account</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+            <div class="selected-account" id="selected-account" style="display:none"><span class="selected-label">CURRENTLY SELECTED</span><strong class="selected-name" id="selected-name">—</strong></div>
+          </section>
         </div>
       </div>
 
-      <!-- ===== PAGE: SETTINGS ===== -->
       <div class="page" id="page-settings">
-        <div class="page-header">
-          <h2>Settings</h2>
-          <div class="spacer"></div>
-          <button id="settings-save" class="primary">💾 Save</button>
-        </div>
-
-        <div class="settings-scroll">
-          <!-- Java Settings -->
-          <div class="card settings-card">
-            <div class="card-header">
-              <span class="card-icon">☕</span>
-              <h2>Java Settings</h2>
-            </div>
-            <div class="card-divider"></div>
-            <div class="settings-field">
-              <label class="field-label">Java Path Override</label>
-              <span class="field-hint">Leave empty for auto-detect</span>
-              <input id="settings-java-path" placeholder="Auto-detect Java">
-            </div>
-            <div class="field-group">
-              <span class="field-label">Detected Java Installations</span>
-              <div id="settings-java-list" class="java-list"><span class="muted">Scanning…</span></div>
-            </div>
-          </div>
-
-          <!-- Game Settings -->
-          <div class="card settings-card">
-            <div class="card-header">
-              <span class="card-icon">🎮</span>
-              <h2>Game Settings</h2>
-            </div>
-            <div class="card-divider"></div>
-            <div class="settings-field">
-              <label class="field-label">Memory Allocation (RAM)</label>
-              <span class="field-hint">Amount of RAM allocated to Minecraft</span>
-              <div class="memory-slider-row">
-                <span>512 MB</span>
-                <input id="settings-memory" type="range" min="512" max="16384" step="256" value="2048">
-                <span>16 GB</span>
-              </div>
-              <div class="memory-value-display" id="settings-memory-display">2 GB (2048 MB)</div>
-            </div>
-          </div>
-
-          <!-- Mod Loader Settings -->
-          <div class="card settings-card">
-            <div class="card-header">
-              <span class="card-icon">🧩</span>
-              <h2>Default Mod Loader</h2>
-            </div>
-            <div class="card-divider"></div>
-            <div class="info-banner" style="margin-bottom:16px">
-              <span class="info-banner-icon">💡</span>
-              <div>
-                <strong>Why do I need a mod loader?</strong>
-                <p>Minecraft doesn't load mods by itself. A mod loader like Fabric or Forge acts as a bridge between the game and your mods. Place your mods in the <code>mods/</code> folder inside your game directory.</p>
-              </div>
-            </div>
-            <div class="settings-field">
-              <label class="field-label">Mod Loader Type</label>
-              <select id="settings-loader-type">
-                <option value="">Vanilla (no mod loader)</option>
-                <option value="fabric">Fabric</option>
-                <option value="quilt">Quilt</option>
-                <option value="forge">Forge</option>
-              </select>
-            </div>
-            <div class="settings-field" id="settings-loader-version-field" style="display:none">
-              <label class="field-label">Mod Loader Version</label>
-              <select id="settings-loader-version">
-                <option value="">Select version...</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Data Settings -->
-          <div class="card settings-card">
-            <div class="card-header">
-              <span class="card-icon">📁</span>
-              <h2>Data Settings</h2>
-            </div>
-            <div class="card-divider"></div>
-            <div class="settings-field">
-              <label class="field-label">Data Directory</label>
-              <span class="field-hint" id="settings-data-dir">—</span>
-              <span class="field-hint muted">Set AMETHYST_HOME environment variable to change</span>
-            </div>
-          </div>
-
-          <!-- About -->
-          <div class="card settings-card">
-            <div class="card-header">
-              <span class="card-icon">💎</span>
-              <h2>About</h2>
-            </div>
-            <div class="card-divider"></div>
-            <div class="about-content">
-              <div class="about-title-row">
-                <span class="about-name">Amethyst</span>
-                <span class="about-version">v<span id="about-version">0.2.0</span></span>
-              </div>
-              <p>A dark purple Minecraft launcher with mod loader support, built with Node.js</p>
-              <p class="muted">Amethyst does not include or redistribute Minecraft code. All game files are downloaded from official Mojang/Microsoft servers. Mod loader files are downloaded from their respective official sources.</p>
-              <div class="card-divider"></div>
-              <div class="about-status-row">
-                <span>Backend:</span>
-                <span class="status-dot" id="about-dot"></span>
-                <span id="about-backend-status">Disconnected</span>
-              </div>
-            </div>
-          </div>
+        <div class="page-heading"><div><span class="section-eyebrow">PREFERENCES</span><h1>Settings</h1><p>Make Amethyst fit the way you play.</p></div><button id="settings-save" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h8l2 2v8H3V3Z"/><path d="M5 3v4h5V3M5.5 13v-3h5v3"/></svg><span>Save changes</span></button></div>
+        <div class="settings-grid">
+          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">RUNTIME</span><h2>Java settings</h2></div><span class="panel-icon">☕</span></div><div class="settings-field"><label class="field-label" for="settings-java-path">JAVA PATH OVERRIDE</label><span class="field-hint">Leave empty and Amethyst will auto-detect Java.</span><input id="settings-java-path" placeholder="Auto-detect Java" autocomplete="off"></div><div class="field-group"><span class="field-label">DETECTED INSTALLATIONS</span><div id="settings-java-list" class="java-list"><span class="muted">Scanning…</span></div></div></section>
+          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">PERFORMANCE</span><h2>Game settings</h2></div><span class="panel-icon">◒</span></div><div class="settings-field"><label class="field-label">MEMORY ALLOCATION</label><span class="field-hint">Amount of RAM allocated to Minecraft.</span><div class="memory-slider-row settings-memory-row"><span>512 MB</span><input id="settings-memory" type="range" min="512" max="16384" step="256" value="2048" aria-label="Memory allocation"><span>16 GB</span></div><div class="memory-value-display" id="settings-memory-display">2 GB (2048 MB)</div></div></section>
+          <section class="card settings-card"><div class="panel-heading"><div><span class="section-eyebrow">STORAGE</span><h2>Data directory</h2></div><span class="panel-icon">⌂</span></div><div class="data-directory"><span class="directory-icon">/</span><div><strong id="settings-data-dir">—</strong><p>Set <code>AMETHYST_HOME</code> to change this location.</p></div></div><div class="data-directory" style="margin-top:12px"><span class="directory-icon">⊞</span><div><strong id="settings-game-dir">—</strong><p>Choose which drive to download game files to.</p></div><button id="settings-change-dir" class="button button-quiet" style="margin-left:auto">Change</button></div></section>
+          <section class="card settings-card about-card"><div class="panel-heading"><div><span class="section-eyebrow">ABOUT</span><h2>Amethyst</h2></div><span class="panel-icon">✦</span></div><div class="about-content"><div class="about-title-row"><span class="about-name">A focused vanilla experience.</span><span class="about-version">v<span id="about-version">0.1.0</span></span></div><p>All game files are downloaded from official Mojang / Microsoft servers when you need them. Amethyst does not bundle or redistribute Minecraft code.</p><div class="about-status-row"><span class="status-dot offline" id="about-dot"></span><span id="about-backend-status">Disconnected</span><span class="status-separator">·</span><span>Node.js backend</span></div></div></section>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- Download Dialog (modal) -->
-  <div class="modal-overlay" id="download-modal" style="display:none">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-icon" id="modal-icon">💎</span>
-        <div>
-          <span class="modal-title" id="modal-title">Installation</span>
-          <span class="modal-version" id="modal-version">—</span>
-        </div>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="nav-item active" data-page="home" href="#home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/></svg><span>Home</span></a><a class="nav-item" data-page="versions" href="#versions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"/></svg><span>Versions</span></a><a class="nav-item" data-page="modpacks" href="#modpacks"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Packs</span></a><a class="nav-item" data-page="accounts" href="#accounts"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.2 3.1-5 7-5s6.4 1.8 7 5"/></svg><span>Accounts</span></a><a class="nav-item" data-page="settings" href="#settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"/><circle cx="12" cy="12" r="4"/></svg><span>Settings</span></a></nav>
+
+  <div class="modal-overlay" id="download-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal"><div class="modal-header"><div class="modal-icon"><span id="modal-icon">✦</span></div><div><span class="modal-title" id="modal-title">Installation</span><span class="modal-version" id="modal-version">—</span></div><button id="modal-close" class="modal-dismiss" aria-label="Close">×</button></div><div class="modal-body"><div class="modal-status-icon" id="modal-status-icon">◌</div><span class="modal-status-text" id="modal-status-text">Preparing…</span><div class="modal-progress-wrap" id="modal-progress-wrap"><div class="modal-progress-bar" id="modal-progress-bar"></div></div><span class="modal-percent" id="modal-percent">0%</span></div><div class="modal-actions"><button id="modal-primary" class="button button-subtle">Cancel</button></div></div>
+  </div>
+
+  <div class="modal-overlay" id="modpack-modal" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal" style="width:min(520px,100%)"><div class="modal-header"><div class="modal-icon"><span>◫</span></div><div><span class="modal-title">New modpack</span><span class="modal-version">Create from MC version + loader</span></div><button id="modpack-modal-close" class="modal-dismiss">×</button></div>
+      <div class="modal-body" style="align-items:stretch">
+        <label class="field-label">NAME</label><input id="mp-new-name" placeholder="My pack">
+        <label class="field-label" style="margin-top:10px">DESCRIPTION (optional)</label><input id="mp-new-desc" placeholder="A cool pack">
+        <label class="field-label" style="margin-top:10px">MINECRAFT VERSION</label><select id="mp-new-mc"><option value="">Select…</option></select>
+        <label class="field-label" style="margin-top:10px">MOD LOADER</label><select id="mp-new-loader"><option value="vanilla">Vanilla</option><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select>
+        <div id="mp-new-loader-ver-wrap" style="display:none; flex-direction:column; gap:6px; margin-top:10px"><label class="field-label">LOADER VERSION (optional, empty = latest)</label><div style="display:flex; gap:8px"><select id="mp-new-loader-ver" style="flex:1"><option value="">Latest</option></select><button id="mp-new-loader-refresh" class="button button-quiet">Refresh</button></div></div>
       </div>
-      <div class="modal-body">
-        <div class="modal-status-icon" id="modal-status-icon">⏳</div>
-        <span class="modal-status-text" id="modal-status-text">Preparing...</span>
-        <div class="modal-progress-wrap" id="modal-progress-wrap">
-          <div class="modal-progress-bar" id="modal-progress-bar"></div>
-        </div>
-        <span class="modal-percent" id="modal-percent">0%</span>
-      </div>
-      <div class="modal-actions">
-        <button id="modal-primary" class="primary">Cancel</button>
-        <button id="modal-close" class="ghost">Close</button>
-      </div>
+      <div class="modal-actions" style="gap:8px"><button id="mp-new-cancel" class="button button-quiet">Cancel</button><button id="mp-new-create" class="button primary">Create</button></div>
     </div>
   </div>
 
-  <!-- Log overlay (hidden, but we still need log output) -->
-  <pre id="log" class="log-hidden"></pre>
+  <div class="modal-overlay" id="microsoft-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="microsoft-modal-title">
+    <div class="modal microsoft-modal">
+      <div class="modal-header"><div class="modal-icon"><span>▦</span></div><div><span class="modal-title" id="microsoft-modal-title">Sign in with Microsoft</span><span class="modal-version">Secure device-code login</span></div><button id="microsoft-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="modal-body microsoft-login-body">
+        <p id="microsoft-login-message">Requesting a sign-in code…</p>
+        <button id="microsoft-user-code" class="device-code" type="button" title="Copy code" disabled>Requesting…</button>
+        <a id="microsoft-login-link" class="button primary" href="https://www.microsoft.com/link" target="_blank" rel="noreferrer">Open Microsoft sign-in</a>
+        <span class="field-hint">Enter the code on Microsoft's page. Never enter your password in Amethyst.</span>
+        <span class="skin-status" id="microsoft-login-status">Waiting for Microsoft…</span>
+      </div>
+      <div class="modal-actions"><button id="microsoft-login-cancel" class="button button-subtle">Cancel</button></div>
+    </div>
+  </div>
 
+  <div class="modal-overlay" id="skin-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="skin-modal-title">
+    <div class="modal skin-modal">
+      <div class="modal-header"><div class="modal-icon"><span>◩</span></div><div><span class="modal-title" id="skin-modal-title">Skin changer</span><span class="modal-version" id="skin-account-name">Microsoft account</span></div><button id="skin-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="skin-manager">
+        <div class="skin-preview-panel">
+          <div class="skin-canvas-wrap"><canvas id="skin-preview" width="128" height="256" aria-label="Minecraft skin preview"></canvas><span id="skin-preview-empty">Choose a skin to preview</span></div>
+          <div class="skin-preview-meta"><strong id="skin-preview-size">No skin selected</strong><span id="skin-preview-source">64×64 or legacy 64×32 PNG</span></div>
+        </div>
+        <div class="skin-controls">
+          <div><span class="section-eyebrow">IMPORT A SKIN</span><h2>Choose your new look</h2><p class="panel-copy">Upload a PNG downloaded from any skin site, paste a direct HTTPS PNG link, or paste a NameMC / Skindex skin page URL.</p></div>
+          <input id="skin-file" type="file" accept="image/png,.png" hidden>
+          <button id="skin-file-button" class="button button-subtle" type="button">Choose PNG file</button>
+          <label class="field-label" for="skin-url">SKIN OR DIRECT PNG URL</label>
+          <div class="skin-url-row"><input id="skin-url" type="url" placeholder="NameMC, Skindex, or direct PNG URL" autocomplete="off"><button id="skin-url-preview" class="button button-quiet" type="button">Preview</button></div>
+          <label class="field-label" for="skin-variant">PLAYER MODEL</label>
+          <select id="skin-variant"><option value="classic">Classic · 4 px arms</option><option value="slim">Slim · 3 px arms</option></select>
+          <div class="skin-provider-list" aria-label="Supported skin websites">
+            <a href="https://namemc.com/minecraft-skins" target="_blank" rel="noreferrer">NameMC</a>
+            <a href="https://www.minecraftskins.com/" target="_blank" rel="noreferrer">The Skindex</a>
+            <a href="https://www.planetminecraft.com/skins/" target="_blank" rel="noreferrer">Planet Minecraft</a>
+            <a href="https://minecraft.novaskin.me/gallery" target="_blank" rel="noreferrer">Nova Skin</a>
+          </div>
+          <span class="skin-status" id="skin-status">Skin changes are sent only to the official Minecraft profile service.</span>
+        </div>
+      </div>
+      <div class="modal-actions skin-modal-actions"><button id="skin-cancel" class="button button-subtle">Cancel</button><button id="skin-apply" class="button primary" disabled>Apply skin</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="drive-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="drive-modal-title">
+    <div class="modal" style="width:min(560px,100%)"><div class="modal-header"><div class="modal-icon"><span>⊞</span></div><div><span class="modal-title" id="drive-modal-title">Choose download location</span><span class="modal-version">Select a drive for game files</span></div><button id="drive-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="modal-body" style="align-items:stretch; padding:0">
+        <div class="drive-list" id="drive-list"><span class="muted">Loading drives…</span></div>
+        <div class="settings-field" style="padding:12px 20px; border-top:1px solid var(--hairline); margin:0">
+          <label class="field-label">OR ENTER CUSTOM PATH</label>
+          <div class="game-dir-row">
+            <input id="drive-custom-path" placeholder="/custom/path">
+            <button id="drive-custom-select" class="button button-subtle">Use</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="drive-cancel" class="button button-subtle">Cancel</button></div>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <pre id="log" class="log-hidden"></pre>
   <script src="/app.js"></script>
 </body>
 </html>

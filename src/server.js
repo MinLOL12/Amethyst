@@ -9,7 +9,23 @@ const { listAccounts, addOfflineAccount, removeAccount, readSettings, saveSettin
 const { installVersion, launchVersion } = require('./launcher/minecraft');
 const { listModLoaders, getInstalledLoaders } = require('./launcher/modloader');
 const { getNews } = require('./launcher/news');
+const { listDrives } = require('./launcher/drives');
+const {
+  getLogs,
+  getLogText,
+  clearLogs,
+  listCrashReports,
+  readCrashReport,
+  saveCrashReportCopy
+} = require('./launcher/logs');
+const { openFolder, listFolderShortcuts, resolveFolder } = require('./launcher/folders');
 const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
+
+// Modpack system (additional)
+const modpacks = require('./launcher/modpacks');
+const modrinth = require('./launcher/modrinth');
+const curseforge = require('./launcher/curseforge');
+const skins = require('./launcher/skins');
 
 const publicDir = path.join(__dirname, '..', 'public');
 const clients = new Set();
@@ -90,6 +106,21 @@ async function runExclusive(name, task) {
   }
 }
 
+function matchRoute(pathname, pattern) {
+  const pathParts = pathname.split('/').filter(Boolean);
+  const patternParts = pattern.split('/').filter(Boolean);
+  if (pathParts.length !== patternParts.length) return null;
+  const params = {};
+  for (let i = 0; i < patternParts.length; i++) {
+    if (patternParts[i].startsWith(':')) {
+      params[patternParts[i].slice(1)] = decodeURIComponent(pathParts[i]);
+    } else if (patternParts[i] !== pathParts[i]) {
+      return null;
+    }
+  }
+  return params;
+}
+
 async function handleApi(request, response, url) {
   if (url.pathname === '/api/events') {
     response.writeHead(200, {
@@ -98,48 +129,126 @@ async function handleApi(request, response, url) {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no'
     });
-    response.write(`data: ${JSON.stringify({ type: 'hello', app: APP_NAME, version: APP_VERSION, at: new Date().toISOString() })}\n\n`);
+    response.write(
+      `data: ${JSON.stringify({ type: 'hello', app: APP_NAME, version: APP_VERSION, at: new Date().toISOString() })}\n\n`
+    );
     clients.add(response);
     request.on('close', () => clients.delete(response));
     return;
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/status') {
-    return json(response, 200, { app: APP_NAME, version: APP_VERSION, dataRoot: getDataRoot(), busyTask });
+  const method = request.method;
+
+  if (method === 'GET' && url.pathname === '/api/status') {
+    return json(response, 200, {
+      app: APP_NAME,
+      version: APP_VERSION,
+      dataRoot: getDataRoot(),
+      busyTask,
+      loaders: LOADERS,
+      curseforgeEnabled: !!curseforge.getApiKey()
+    });
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/versions') {
+  // ── Versions ──────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/versions') {
     return json(response, 200, await listVersions());
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/java') {
-    return json(response, 200, { installations: await scanJavaInstallations() });
+  // ── Java ──────────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/java') {
+    return json(response, 200, { installations: await listAllJava() });
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/accounts') {
+  if (method === 'GET' && url.pathname === '/api/java/downloadable') {
+    return json(response, 200, { versions: await listDownloadableJava() });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/java/download') {
+    const body = await readBody(request);
+    const major = Number(body.major) || 17;
+    const job = downloadQueue.enqueue({
+      name: `Download Java ${major}`,
+      type: 'java',
+      run: async () => downloadJava(major, body)
+    });
+    return json(response, 202, { job, queued: true });
+  }
+
+  // ── Accounts ──────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/accounts') {
     return json(response, 200, { accounts: await listAccounts() });
   }
 
-  if (request.method === 'POST' && url.pathname === '/api/accounts') {
+  if (method === 'POST' && url.pathname === '/api/accounts') {
     const body = await readBody(request);
     return json(response, 201, { account: await addOfflineAccount(body.username) });
   }
 
-  const deleteAccountMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)$/);
-  if (request.method === 'DELETE' && deleteAccountMatch) {
-    return json(response, 200, { accounts: await removeAccount(decodeURIComponent(deleteAccountMatch[1])) });
+  if (method === 'POST' && url.pathname === '/api/accounts/microsoft/start') {
+    const body = await readBody(request);
+    const settings = await readSettings();
+    const remember = body.remember !== undefined ? Boolean(body.remember) : settings.rememberMicrosoftLogin;
+    return json(response, 200, await startDeviceLogin({ remember }));
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/settings') {
+  const msStatus = matchRoute(url.pathname, '/api/accounts/microsoft/status/:loginId');
+  if (method === 'GET' && msStatus) {
+    return json(response, 200, getLoginStatus(msStatus.loginId));
+  }
+
+  const msCancel = matchRoute(url.pathname, '/api/accounts/microsoft/cancel/:loginId');
+  if (method === 'POST' && msCancel) {
+    return json(response, 200, cancelLogin(msCancel.loginId));
+  }
+
+  const msRefresh = matchRoute(url.pathname, '/api/accounts/:id/refresh');
+  if (method === 'POST' && msRefresh) {
+    return json(response, 200, { account: await refreshMicrosoftAccount(msRefresh.id) });
+  }
+
+  const accountSwitch = matchRoute(url.pathname, '/api/accounts/:id/switch');
+  if (method === 'POST' && accountSwitch) {
+    return json(response, 200, { account: await switchAccount(accountSwitch.id) });
+  }
+
+  const accountSelect = matchRoute(url.pathname, '/api/accounts/:id/select');
+  if (method === 'POST' && accountSelect) {
+    return json(response, 200, { account: await setActiveAccount(accountSelect.id) });
+  }
+
+  const accountSkin = matchRoute(url.pathname, '/api/accounts/:id/skin');
+  if (method === 'POST' && accountSkin) {
+    const body = await readBody(request);
+    return json(response, 200, await skins.applySkin(accountSkin.id, body));
+  }
+
+  if (method === 'GET' && url.pathname === '/api/skins/providers') {
+    return json(response, 200, { providers: skins.SKIN_PROVIDERS });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/skins/preview') {
+    const body = await readBody(request);
+    return json(response, 200, await skins.previewSkin(body));
+  }
+
+  const deleteAccountMatch = matchRoute(url.pathname, '/api/accounts/:id');
+  if (method === 'DELETE' && deleteAccountMatch) {
+    return json(response, 200, { accounts: await removeAccount(deleteAccountMatch.id) });
+  }
+
+  // ── Settings ──────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/settings') {
     return json(response, 200, { settings: await readSettings() });
   }
 
-  if (request.method === 'POST' && url.pathname === '/api/settings') {
+  if (method === 'POST' && url.pathname === '/api/settings') {
     const body = await readBody(request);
     return json(response, 200, { settings: await saveSettings(body) });
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/news') {
+  // ── News ──────────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/news') {
     return json(response, 200, { entries: await getNews() });
   }
 
@@ -165,19 +274,242 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'POST' && url.pathname === '/api/install') {
     const body = await readBody(request);
-    if (!body.versionId) throw new Error('versionId is required');
-    const result = await runExclusive(`Install ${body.versionId}`, () => installVersion(body.versionId, body));
-    return json(response, 200, { ok: true, versionId: body.versionId, gameDir: result.paths.root });
+    if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
+    const name = body.instanceId ? `Install instance` : `Install ${body.versionId}`;
+    const job = downloadQueue.enqueue({
+      name,
+      type: 'install',
+      run: async () => {
+        const result = await installVersion(body.versionId, body);
+        return { versionId: result.versionId, gameDir: result.paths.root };
+      }
+    });
+    return json(response, 202, { job, ok: true });
   }
 
-  if (request.method === 'POST' && url.pathname === '/api/launch') {
+  if (method === 'POST' && url.pathname === '/api/launch') {
     const body = await readBody(request);
-    if (!body.versionId) throw new Error('versionId is required');
+    if (!body.versionId && !body.instanceId) throw new Error('versionId or instanceId is required');
     const accounts = await listAccounts();
-    const account = accounts.find((item) => item.id === body.accountId) || accounts[0];
-    if (!account) throw new Error('Create an offline account before launching.');
-    const result = await runExclusive(`Launch ${body.versionId}`, () => launchVersion(body.versionId, account, body));
+    const accountId = body.accountId || (await readSettings()).lastAccountId || accounts[0]?.id;
+    if (!accountId) throw new Error('Create or sign in to an account before launching.');
+
+    // Check if already installed - skip downloads if so
+    if (!body.skipInstall) {
+      const check = await checkVersionInstalled(body.versionId || (await getInstance(body.instanceId)).playVersionId, body);
+      if (check.installed) {
+        body.skipInstall = true;
+        progressBus.emitEvent('status', { message: `${body.versionId} already installed — skipping downloads` });
+      }
+    }
+
+    const result = await runExclusive(
+      body.instanceId ? 'Launch instance' : `Launch ${body.versionId}`,
+      () => launchVersion(body.versionId, accountId, body)
+    );
     return json(response, 200, { ok: true, ...result });
+  }
+
+  // ── Downloads queue ───────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/downloads') {
+    return json(response, 200, downloadQueue.snapshot());
+  }
+
+  if (method === 'POST' && url.pathname === '/api/downloads/pause') {
+    downloadQueue.pause();
+    return json(response, 200, downloadQueue.snapshot());
+  }
+
+  if (method === 'POST' && url.pathname === '/api/downloads/resume') {
+    downloadQueue.resume();
+    return json(response, 200, downloadQueue.snapshot());
+  }
+
+  if (method === 'POST' && url.pathname === '/api/downloads/clear') {
+    downloadQueue.clearFinished();
+    return json(response, 200, downloadQueue.snapshot());
+  }
+
+  const cancelJob = matchRoute(url.pathname, '/api/downloads/:id/cancel');
+  if (method === 'POST' && cancelJob) {
+    downloadQueue.cancel(cancelJob.id);
+    return json(response, 200, downloadQueue.snapshot());
+  }
+
+  // ── Logs ──────────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/logs') {
+    return json(response, 200, {
+      lines: getLogs({
+        search: url.searchParams.get('search') || '',
+        stream: url.searchParams.get('stream') || '',
+        limit: Number(url.searchParams.get('limit')) || 500
+      })
+    });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/logs/text') {
+    const text = getLogText({
+      search: url.searchParams.get('search') || '',
+      stream: url.searchParams.get('stream') || ''
+    });
+    response.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    response.end(text);
+    return;
+  }
+
+  if (method === 'DELETE' && url.pathname === '/api/logs') {
+    return json(response, 200, clearLogs());
+  }
+
+  if (method === 'GET' && url.pathname === '/api/crash-reports') {
+    const gameDir = url.searchParams.get('gameDir') || undefined;
+    const instanceId = url.searchParams.get('instanceId');
+    let dir = gameDir;
+    if (instanceId) {
+      const instance = await getInstance(instanceId);
+      dir = instance.gameDir;
+    }
+    return json(response, 200, { reports: await listCrashReports(dir) });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/crash-reports/read') {
+    const filePath = url.searchParams.get('path');
+    if (!filePath) throw new Error('path is required');
+    return json(response, 200, await readCrashReport(filePath));
+  }
+
+  if (method === 'POST' && url.pathname === '/api/crash-reports/save') {
+    const body = await readBody(request);
+    if (!body.path) throw new Error('path is required');
+    return json(response, 200, await saveCrashReportCopy(body.path, body.destinationDir));
+  }
+
+  // ── File browser shortcuts ────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/folders') {
+    return json(response, 200, {
+      folders: await listFolderShortcuts(url.searchParams.get('instanceId') || undefined)
+    });
+  }
+
+  if (method === 'POST' && url.pathname === '/api/folders/open') {
+    const body = await readBody(request);
+    return json(response, 200, await openFolder(body.kind || body.folder || 'minecraft', body));
+  }
+
+  if (method === 'GET' && url.pathname === '/api/folders/resolve') {
+    const kind = url.searchParams.get('kind') || 'minecraft';
+    return json(response, 200, await resolveFolder(kind, {
+      instanceId: url.searchParams.get('instanceId') || undefined,
+      gameDir: url.searchParams.get('gameDir') || undefined
+    }));
+  }
+
+  // ── Modpacks (mod pack creator) ───────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/modpacks') {
+    return json(response, 200, { modpacks: await modpacks.listModpacks() });
+  }
+  if (method === 'POST' && url.pathname === '/api/modpacks') {
+    const body = await readBody(request);
+    return json(response, 201, { modpack: await modpacks.createModpack(body) });
+  }
+
+  const modpackOne = matchRoute(url.pathname, '/api/modpacks/:id');
+  if (modpackOne) {
+    if (method === 'GET') return json(response, 200, { modpack: await modpacks.getModpack(modpackOne.id) });
+    if (method === 'DELETE') { await modpacks.deleteModpack(modpackOne.id); return json(response, 200, { ok: true }); }
+    if (method === 'PATCH' || method === 'POST') { const body = await readBody(request); return json(response, 200, { modpack: await modpacks.updateModpack(modpackOne.id, body) }); }
+  }
+
+  const modpackInstall = matchRoute(url.pathname, '/api/modpacks/:id/install');
+  if (method === 'POST' && modpackInstall) {
+    const body = await readBody(request).catch(() => ({}));
+    const result = await runExclusive(`Install modpack ${modpackInstall.id}`, () => modpacks.installModpack(modpackInstall.id, body));
+    return json(response, 200, { ok: true, ...result });
+  }
+
+  const modpackLaunch = matchRoute(url.pathname, '/api/modpacks/:id/launch');
+  if (method === 'POST' && modpackLaunch) {
+    const body = await readBody(request);
+    const result = await runExclusive(`Launch modpack ${modpackLaunch.id}`, () => modpacks.launchModpack(modpackLaunch.id, body.accountId || body.account, body));
+    return json(response, 200, { ok: true, ...result });
+  }
+
+  const modpackMods = matchRoute(url.pathname, '/api/modpacks/:id/mods');
+  if (modpackMods) {
+    if (method === 'GET') return json(response, 200, { mods: await modpacks.listMods(modpackMods.id) });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      if (!body.fileUrl || !body.fileName) throw new Error('fileUrl and fileName required');
+      const entry = await runExclusive(`Install mod ${body.fileName}`, () => modpacks.addModToPack(modpackMods.id, body));
+      return json(response, 201, { mod: entry });
+    }
+  }
+
+  const modpackModDel = matchRoute(url.pathname, '/api/modpacks/:packId/mods/:modId');
+  if (method === 'DELETE' && modpackModDel) {
+    const remaining = await modpacks.removeModFromPack(modpackModDel.packId, modpackModDel.modId);
+    return json(response, 200, { mods: remaining });
+  }
+
+  // ── Modloaders alias (fabric/forge/neoforge/quilt) ────────────
+  const modloaderVersionsAlt = matchRoute(url.pathname, '/api/modloaders/:loader/versions');
+  if (method === 'GET' && modloaderVersionsAlt) {
+    const loader = modloaderVersionsAlt.loader;
+    const mcVersion = url.searchParams.get('mcVersion') || url.searchParams.get('minecraftVersion') || url.searchParams.get('gameVersion');
+    // Reuse existing loader listing
+    return json(response, 200, await listLoaderVersions(loader, mcVersion || undefined));
+  }
+
+  // ── Modrinth ──────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/modrinth/search') {
+    const query = url.searchParams.get('q') || url.searchParams.get('query') || '';
+    const loader = url.searchParams.get('loader') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const limit = Number(url.searchParams.get('limit') || 20);
+    const offset = Number(url.searchParams.get('offset') || 0);
+    const projectType = url.searchParams.get('projectType') || 'mod';
+    const loaders = loader ? [loader] : [];
+    const gameVersions = gameVersion ? [gameVersion] : [];
+    const data = await modrinth.searchProjects({ query, loaders, gameVersions, projectType, limit, offset });
+    return json(response, 200, data);
+  }
+
+  const mrProj = matchRoute(url.pathname, '/api/modrinth/project/:id');
+  if (method === 'GET' && mrProj && !url.pathname.endsWith('/versions')) {
+    return json(response, 200, await modrinth.getProject(mrProj.id));
+  }
+
+  const mrVers = matchRoute(url.pathname, '/api/modrinth/project/:projectId/versions');
+  if (method === 'GET' && mrVers) {
+    const loader = url.searchParams.get('loader') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    return json(response, 200, { versions: await modrinth.getProjectVersions(mrVers.projectId, { loaders: loader ? [loader] : [], gameVersions: gameVersion ? [gameVersion] : [] }) });
+  }
+
+  // ── CurseForge ────────────────────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/curseforge/search') {
+    const searchFilter = url.searchParams.get('q') || url.searchParams.get('searchFilter') || '';
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const modLoaderType = url.searchParams.get('loader') || '';
+    const pageSize = Number(url.searchParams.get('limit') || 20);
+    const index = Number(url.searchParams.get('offset') || 0);
+    const data = await curseforge.searchMods({ searchFilter, gameVersion, modLoaderType, pageSize, index });
+    return json(response, 200, data);
+  }
+
+  const cfFiles = matchRoute(url.pathname, '/api/curseforge/mod/:id/files');
+  if (method === 'GET' && cfFiles) {
+    const gameVersion = url.searchParams.get('gameVersion') || '';
+    const modLoaderType = url.searchParams.get('loader') || '';
+    return json(response, 200, await curseforge.getModFiles(cfFiles.id, { gameVersion, modLoaderType }));
+  }
+
+  const cfMod = matchRoute(url.pathname, '/api/curseforge/mod/:id');
+  if (method === 'GET' && cfMod) {
+    return json(response, 200, await curseforge.getMod(cfMod.id));
   }
 
   json(response, 404, { error: 'Not found' });
