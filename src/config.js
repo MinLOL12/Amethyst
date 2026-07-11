@@ -52,9 +52,9 @@ function getDefaultSettings() {
     launchArgs: '',
     lastVersion: '',
     lastAccountId: '',
-    lastInstanceId: '',
     maxConcurrentDownloads: 8,
-    rememberMicrosoftLogin: true
+    loaderType: '',
+    loaderVersion: ''
   };
 }
 
@@ -64,15 +64,10 @@ module.exports = {
   MOJANG_MANIFEST_URL,
   NEWS_URL,
   RESOURCES_BASE_URL,
-  MS_CLIENT_ID,
-  MS_SCOPE,
-  MS_DEVICE_CODE_URL,
-  MS_TOKEN_URL,
   FABRIC_META_URL,
   QUILT_META_URL,
   FORGE_MAVEN_URL,
-  NEOFORGE_MAVEN_URL,
-  ADOPTIUM_API_URL,
+  FORGE_PROMOTIONS_URL,
   getDataRoot,
   getDefaultSettings
 };

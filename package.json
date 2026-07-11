@@ -1,7 +1,7 @@
 {
   "name": "amethyst-launcher",
   "version": "0.2.0",
-  "description": "Amethyst - a dark purple Minecraft launcher with a polished zero-build web UI.",
+  "description": "Amethyst - a dark purple Minecraft launcher with mod loader support, built with Node.js.",
   "main": "src/main.js",
   "type": "commonjs",
   "bin": {
@@ -10,15 +10,20 @@
   "scripts": {
     "start": "node src/main.js",
     "dev": "AMETHYST_DEV=1 node src/main.js",
-    "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/downloadQueue.js && node --check src/launcher/javaLocator.js && node --check src/launcher/javaManager.js && node --check src/launcher/minecraft.js && node --check src/launcher/minecraftPaths.js && node --check src/launcher/mojangApi.js && node --check src/launcher/modLoaders.js && node --check src/launcher/modpacks.js && node --check src/launcher/forgeInstaller.js && node --check src/launcher/skins.js && node --check src/launcher/microsoftAuth.js && node --check src/launcher/instances.js && node --check src/launcher/logs.js && node --check src/launcher/folders.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js && node --check public/app.js && node --check test/modpacks-auth.test.js",
-    "test": "npm run check && node test/rules.test.js && node test/features.test.js && node test/forge-skins.test.js && node test/modpacks-auth.test.js && node test/startup.test.js"
+    "check": "node --check src/main.js && node --check src/server.js && node --check src/config.js && node --check src/launcher/accounts.js && node --check src/launcher/downloader.js && node --check src/launcher/javaLocator.js && node --check src/launcher/minecraft.js && node --check src/launcher/modloader.js && node --check src/launcher/mojangApi.js && node --check src/launcher/news.js && node --check src/launcher/os.js && node --check src/launcher/rules.js && node --check src/launcher/store.js && node --check qt-ui/install.js",
+    "test": "npm run check && node test/rules.test.js && node test/modloader.test.js",
+    "qt:setup": "node qt-ui/install.js",
+    "qt:build": "cmake --build qt-ui/build --parallel",
+    "qt:run": "node qt-ui/install.js --run"
   },
   "keywords": [
     "minecraft",
     "launcher",
     "fabric",
     "forge",
-    "microsoft",
+    "quilt",
+    "modloader",
+    "offline",
     "amethyst"
   ],
   "author": "Amethyst contributors",

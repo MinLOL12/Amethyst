@@ -195,7 +195,7 @@ async function readSettings() {
 
 async function saveSettings(partial) {
   const defaults = getDefaultSettings();
-  const current = await readSettings();
+  const current = await readJson(paths().settings, defaults);
   const next = { ...defaults, ...current, ...partial };
   next.memoryMb = Math.min(16384, Math.max(512, Number(next.memoryMb) || defaults.memoryMb));
   next.resolutionWidth = Math.min(7680, Math.max(640, Number(next.resolutionWidth) || defaults.resolutionWidth));

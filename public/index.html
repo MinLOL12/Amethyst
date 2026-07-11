@@ -51,7 +51,7 @@
           <div><strong id="status-text">Connecting</strong><small>Local Node.js backend</small></div>
           <span class="connection-pulse" aria-hidden="true"></span>
         </div>
-        <div class="sidebar-meta"><span>AMETHYST</span><span>v<span id="app-version">0.1.0</span></span></div>
+        <span class="version-label">v<span id="app-version">0.2.0</span></span>
       </div>
     </aside>
 
@@ -68,15 +68,13 @@
       </header>
 
       <div class="page active" id="page-home">
-        <section class="hero-card">
-          <div class="hero-copy">
-            <div class="hero-kicker"><span class="kicker-dot"></span> A calmer way to play</div>
-            <h1>Make your next<br><em>world</em> unforgettable.</h1>
-            <p>One beautiful, focused launcher for official vanilla Minecraft. Choose a version, set your memory, and get in-game.</p>
-            <div class="hero-actions">
-              <button id="home-browse" class="button primary"><span>Browse versions</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></button>
-              <button id="home-accounts" class="button button-subtle"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="2.2"/><path d="M3.5 13c.3-2 1.8-3.1 4.5-3.1s4.2 1.1 4.5 3.1"/></svg><span>Manage accounts</span></button>
-            </div>
+
+        <!-- Welcome card -->
+        <div class="card hero-card">
+          <div>
+            <span class="eyebrow">💎 Welcome to Amethyst</span>
+            <h2>Launch Minecraft with mods</h2>
+            <p>A dark purple Minecraft launcher with full mod loader support. Install Fabric, Quilt, or Forge and launch with your mods — Amethyst handles the rest. All game files are downloaded from official servers.</p>
           </div>
           <div class="hero-art" aria-hidden="true">
             <div class="hero-glow"></div><div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div>
@@ -85,12 +83,38 @@
           </div>
         </section>
 
-        <section class="stat-strip" aria-label="Launcher status">
-          <div class="stat-item"><span class="stat-icon violet"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 6.5 3.7v8.6L10 18l-6.5-3.7V5.7L10 2Z"/><path d="m3.5 5.7 6.5 3.7 6.5-3.7M10 9.4V18"/></svg></span><div><strong id="versions-count">—</strong><small>versions available</small></div></div>
-          <div class="stat-item"><span class="stat-icon green"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6l7-3.5Z"/><path d="m6.5 10 2.2 2.2 4.8-5"/></svg></span><div><strong id="accounts-count">—</strong><small>player accounts</small></div></div>
-          <div class="stat-item"><span class="stat-icon amber"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a3 3 0 0 0-3 3v2h6v-2a3 3 0 0 0-3-3ZM5 8h10v8.5H5V8Z"/><path d="M8 12h4M10 10v4"/></svg></span><div><strong id="java-status">Scanning</strong><small>Java runtime</small></div></div>
-          <div class="stat-item stat-note"><span class="live-mark"></span><div><strong>Ready when you are</strong><small>local and private by default</small></div></div>
-        </section>
+        <!-- Quick launch -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">🚀</span>
+            <h2>Quick Launch</h2>
+          </div>
+          <div class="card-divider"></div>
+          <div class="quicklaunch-row">
+            <select id="ql-version" class="ql-select" aria-label="Select version"></select>
+          </div>
+          <div class="quicklaunch-row">
+            <select id="ql-loader-type" class="ql-select" aria-label="Mod loader type">
+              <option value="">Vanilla (no mod loader)</option>
+              <option value="fabric">Fabric</option>
+              <option value="quilt">Quilt</option>
+              <option value="forge">Forge</option>
+            </select>
+          </div>
+          <div class="quicklaunch-row" id="ql-loader-version-row" style="display:none">
+            <select id="ql-loader-version" class="ql-select" aria-label="Mod loader version"></select>
+          </div>
+          <div class="quicklaunch-row">
+            <button id="ql-launch" class="primary" disabled>Launch</button>
+          </div>
+          <div class="quicklaunch-row">
+            <label class="slider-label">
+              <span>Memory</span>
+              <strong><span id="ql-memory-value">2048</span> MB</strong>
+            </label>
+            <input id="ql-memory" type="range" min="512" max="16384" step="256" value="2048">
+          </div>
+        </div>
 
         <section class="card launch-card">
           <div class="section-heading"><div><span class="section-eyebrow">QUICK LAUNCH</span><h2>Back to your world</h2></div><span class="section-status"><span class="status-dot online"></span>Offline mode</span></div>
@@ -121,6 +145,70 @@
       <div class="page" id="page-modpacks">
         <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Create packs with any loader and install mods from Modrinth or CurseForge.</p></div><div class="heading-actions"><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
         <div class="versions-layout">
+          <!-- Version list panel -->
+          <div class="card versions-list-panel">
+            <div class="filter-tabs">
+              <button class="filter-tab active" data-filter="all">All</button>
+              <button class="filter-tab" data-filter="release">Release</button>
+              <button class="filter-tab" data-filter="snapshot">Snapshot</button>
+            </div>
+            <div class="version-items" id="version-list"></div>
+          </div>
+
+          <!-- Version details panel -->
+          <div class="card versions-detail-panel" id="version-detail">
+            <div class="detail-empty" id="detail-empty">
+              <span class="detail-empty-icon">📦</span>
+              <p>Select a version from the list</p>
+            </div>
+            <div class="detail-content" id="detail-content" style="display:none">
+              <div class="detail-head">
+                <span class="detail-id" id="detail-id">—</span>
+                <span class="detail-badge" id="detail-badge">release</span>
+              </div>
+              <span class="detail-date" id="detail-date">—</span>
+              <div class="card-divider"></div>
+
+              <!-- Mod Loader Selection -->
+              <div class="detail-loader-section">
+                <div class="info-row">
+                  <span class="info-label">Mod Loader</span>
+                  <span class="info-value">
+                    <select id="detail-loader-type" class="loader-select">
+                      <option value="">Vanilla (no mod loader)</option>
+                      <option value="fabric">Fabric</option>
+                      <option value="quilt">Quilt</option>
+                      <option value="forge">Forge</option>
+                    </select>
+                  </span>
+                </div>
+                <div class="info-row loader-version-row" id="detail-loader-version-row" style="display:none">
+                  <span class="info-label">Loader Version</span>
+                  <span class="info-value">
+                    <select id="detail-loader-version" class="loader-select"></select>
+                  </span>
+                </div>
+              </div>
+
+              <div class="detail-actions">
+                <button id="detail-install" class="primary">▶ Install &amp; Play</button>
+              </div>
+              <div class="detail-info">
+                <div class="info-row"><span class="info-label">Game Directory</span><span class="info-value" id="detail-dir">—</span></div>
+                <div class="info-row"><span class="info-label">Version ID</span><span class="info-value" id="detail-ver">—</span></div>
+                <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="detail-type">—</span></div>
+                <div class="info-row"><span class="info-label">Mod Loader</span><span class="info-value" id="detail-loader-label">Vanilla</span></div>
+              </div>
+              <div class="card-divider"></div>
+              <div class="detail-memory">
+                <label class="slider-label">
+                  <span>RAM: <strong id="detail-ram-label">2 GB</strong></span>
+                </label>
+                <div class="memory-slider-row">
+                  <span>512 MB</span>
+                  <input id="detail-memory" type="range" min="512" max="16384" step="256" value="2048">
+                  <span>16 GB</span>
+                </div>
           <section class="card versions-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Modpacks</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="version-items" id="modpack-list"></div></section>
           <section class="card versions-detail-panel" id="modpack-detail">
             <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create a new pack or select one from the list.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
