@@ -1,9 +1,9 @@
 # Amethyst
 
-Amethyst is a focused, dark-purple Minecraft vanilla launcher MVP. It uses a
-Node.js backend and a **zero-build web UI**: plain HTML, CSS, and JavaScript
-served locally by the same Node process. There is no native UI toolchain,
-frontend framework, bundler, or extra runtime to install.
+Amethyst is a dark-purple Minecraft launcher built with Node.js and a
+**polished zero-build web UI**. The launcher runs locally, serves plain HTML,
+CSS, and JavaScript, and requires no frontend framework, bundler, native UI
+toolchain, or extra runtime.
 
 > **Legal/download note:** Amethyst does not include or redistribute Minecraft
 > client code, libraries, assets, or copyrighted game files. When you install or
@@ -15,9 +15,10 @@ frontend framework, bundler, or extra runtime to install.
 Requirements:
 
 - Node.js 18 or newer.
-- Java 17 or newer to actually launch Minecraft. Amethyst scans `JAVA_HOME`,
-  `JRE_HOME`, `PATH`, and common install directories automatically.
-- Internet access for the first version download, version list, and news.
+- Java 17 or newer to launch Minecraft. Amethyst detects installed Java and can
+  manage Java runtimes through the UI.
+- Internet access for first-time downloads, news, loader metadata, and optional
+  Microsoft login.
 
 ```bash
 npm start
@@ -25,8 +26,7 @@ npm start
 
 Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
 your browser. If it does not open automatically, use the URL printed in the
-terminal. The UI is intentionally just the files in `public/`, so it is fast to
-start, easy to customize, and works anywhere Node.js runs.
+terminal.
 
 Useful environment variables:
 
@@ -34,42 +34,93 @@ Useful environment variables:
 AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
 AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
 PORT=8080 npm start                     # use a fixed local port
+AMETHYST_MS_CLIENT_ID=your-azure-app-id npm start  # optional OAuth client
 ```
+
+The web UI is intentionally just the files in `public/`: it starts quickly,
+works anywhere Node.js runs, and can be customized without a build step.
 
 ## UI
 
-The web UI is designed to feel like a polished desktop launcher while keeping
-the implementation simple:
+The browser UI is designed to feel like a polished desktop launcher while
+keeping the implementation simple:
 
-- A responsive, glassy dark-purple interface with no dependencies.
-- Overview dashboard with quick launch, runtime status, and Minecraft news.
-- Searchable release and snapshot browser with install-and-play actions.
-- Offline account profiles with one-click selection.
-- Java detection, memory allocation, and data-directory settings.
-- Live download and launch status through Server-Sent Events.
-- Keyboard navigation (`1`–`4`) and a mobile bottom navigation bar.
+- Responsive glassy dark-purple interface with inline SVG iconography.
+- Overview dashboard with quick launch, runtime status, recent activity, news,
+  and file shortcuts.
+- Instance browser with isolated profiles and per-instance settings.
+- Searchable official release and snapshot browser.
+- Offline and Microsoft account profiles.
+- Java detection and managed Java downloads.
+- Live download queue, speed, ETA, install, launch, and log feedback.
+- Keyboard navigation (`1`–`4`) and mobile navigation.
 
 To change the look, edit `public/index.html` and `public/styles.css`. To change
 behavior, edit `public/app.js`; the Node server automatically serves those
 files. No build command is needed.
 
-An optional Tauri wrapper is still present under `tauri-ui/` for contributors
-who want a native webview package, but it is not required for development or
-normal use. `npm start` is the simple, supported path.
-
 ## Features
 
-- Offline-mode login for MVP accounts.
-- Saves accounts and settings locally in `~/.amethyst` (or `AMETHYST_HOME`).
-- Downloads and launches official vanilla Minecraft versions from Mojang
-  metadata.
-- Shows live download, install, and launch progress through SSE.
-- Downloads the client jar, libraries, native libraries, asset index, and
-  assets from official manifest URLs.
-- Memory allocation from `512 MB` to `16 GB`.
-- News loaded from Minecraft launcher content, with graceful offline fallback.
+### Microsoft account login
 
-## File structure
+- Multiple Microsoft and offline accounts.
+- Device-code OAuth without an embedded password form.
+- Remember login with refresh tokens.
+- Switch accounts without reauthenticating when a session is stored.
+
+### Installations and instances
+
+- Create multiple profiles with isolated game directories.
+- Configure per-instance Java versions and custom JVM arguments.
+- Use different Minecraft versions and loaders per instance.
+- Rename, duplicate, delete, export, and import instances as ZIP files.
+
+### Mod loaders
+
+- Fabric
+- Forge
+- NeoForge
+- Quilt
+- Vanilla
+
+### Java manager
+
+- Detect Java from `JAVA_HOME`, `PATH`, and common locations.
+- Download the correct Temurin JDK automatically through Adoptium.
+- Choose Java per installation.
+
+### Downloads, settings, and logs
+
+- Queue downloads with progress, speed, and estimated time remaining.
+- Configure RAM, resolution, fullscreen, JVM arguments, and launch arguments.
+- View live game logs, search logs, copy output, and inspect crash reports.
+- Open instance folders, saves, mods, screenshots, resource packs, logs, and
+  crash reports from the launcher.
+
+### Official Minecraft files
+
+Amethyst downloads and verifies official vanilla game files from Mojang
+metadata, including the client jar, libraries, native libraries, asset index,
+and asset objects. It does not grant a Minecraft license; users must comply
+with Minecraft's EULA and applicable terms.
+
+## Data and file structure
+
+Data is stored under `~/.amethyst` or the directory set by `AMETHYST_HOME`:
+
+```text
+~/.amethyst/
+├── accounts.json
+├── settings.json
+├── instances.json
+├── instances/<name>/
+├── java/
+├── minecraft/
+├── logs/
+└── exports/
+```
+
+The repository is organized as:
 
 ```text
 Amethyst/
@@ -83,32 +134,28 @@ Amethyst/
 ├── src/                       # Node.js backend
 │   ├── main.js
 │   ├── server.js
-│   ├── config.js
 │   └── launcher/
 │       ├── accounts.js
 │       ├── downloader.js
+│       ├── downloadQueue.js
+│       ├── folders.js
+│       ├── instances.js
 │       ├── javaLocator.js
+│       ├── javaManager.js
+│       ├── logs.js
 │       ├── minecraft.js
+│       ├── minecraftPaths.js
+│       ├── microsoftAuth.js
+│       ├── modLoaders.js
 │       ├── mojangApi.js
 │       ├── news.js
 │       ├── os.js
 │       ├── rules.js
 │       └── store.js
 └── test/
+    ├── features.test.js
     └── rules.test.js
 ```
-
-## How official version downloads work
-
-1. `src/launcher/mojangApi.js` fetches Mojang's version manifest from
-   `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`.
-2. The selected version's metadata is fetched from the official URL in that
-   manifest.
-3. `src/launcher/minecraft.js` downloads the client jar, allowed libraries,
-   OS-specific native jars, the asset index, and asset objects.
-4. SHA-1 checksums from Mojang metadata are verified where provided.
-5. Launch arguments are built from Mojang's `arguments` or legacy metadata
-   using the offline account values.
 
 ## Development checks
 
@@ -118,12 +165,12 @@ npm test
 
 ## MVP limitations
 
-- Authentication is offline-mode only. Online Microsoft authentication is
-  intentionally out of scope for the MVP.
-- Multiplayer servers that require authenticated Microsoft sessions will not
-  accept offline accounts.
-- The launcher downloads official files but does not grant a Minecraft license.
-  Users must comply with Minecraft's EULA and applicable terms.
+- Microsoft authentication requires a configured Azure application client ID
+  when the default client is unavailable.
+- Offline accounts cannot join servers that require authenticated Microsoft
+  sessions.
+- The launcher downloads official files but does not include or redistribute
+  Minecraft code or assets.
 
 ## License
 

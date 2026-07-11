@@ -426,12 +426,14 @@ function connectEvents() {
         setOnline(true);
         break;
       case 'task-start':
+      case 'queue-start':
         setBusy(true, event.name);
         setProgress(0, event.name);
         showModal(event.name, state.pendingVersionId);
         log(`Started: ${event.name}`);
         break;
       case 'task-complete':
+      case 'queue-complete':
         setBusy(false, 'Ready');
         setProgress(100, 'Complete');
         updateModal('✓', 'Everything is ready.', true);
@@ -439,10 +441,17 @@ function connectEvents() {
         log(`Complete: ${event.name}`);
         break;
       case 'task-error':
+      case 'queue-error':
         setBusy(false, 'Error');
         updateModal('!', event.message, false, true);
         notify(event.message, 'error');
         log(`Error in ${event.name}: ${event.message}`, 'error');
+        break;
+      case 'queue-progress':
+        setProgress(event.percent, event.speedText || `${event.percent}%`);
+        $('#modal-status-text').textContent = event.label
+          ? `${event.label}: ${event.percent}%`
+          : `${event.percent}%`;
         break;
       case 'download-progress':
         if (event.total) {
