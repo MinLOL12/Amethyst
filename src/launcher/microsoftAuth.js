@@ -35,6 +35,14 @@ async function postForm(url, fields) {
   return data;
 }
 
+const XSTS_ERROR_MESSAGES = {
+  2148916233: 'This Microsoft account does not have an Xbox Live profile. Sign in to minecraft.net once to create one.',
+  2148916235: 'Xbox Live is not available in your country or region.',
+  2148916236: 'An adult must add this child account to a Microsoft Family to use Xbox Live.',
+  2148916237: 'This account has been blocked from Xbox Live.',
+  2148916238: 'This is a child account. An adult must add it to a Microsoft Family to use Xbox Live.'
+};
+
 async function postJson(url, payload, headers = {}) {
   const response = await fetch(url, {
     method: 'POST',
@@ -48,7 +56,13 @@ async function postJson(url, payload, headers = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data.errorMessage || data.message || data.Message || data.error || `HTTP ${response.status}`;
+    // XSTS errors use XErr numeric codes with empty Message strings
+    let message = data.errorMessage || data.message || data.error;
+    if (!message && data.XErr) {
+      message = XSTS_ERROR_MESSAGES[data.XErr] || `Xbox Live error ${data.XErr}${data.Redirect ? ` (see ${data.Redirect})` : ''}`;
+    }
+    if (!message && data.Message) message = data.Message;
+    if (!message) message = `HTTP ${response.status}`;
     const error = new Error(message);
     error.status = response.status;
     error.data = data;
@@ -67,8 +81,11 @@ async function getJson(url, headers = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data.errorMessage || data.error || `HTTP ${response.status}`;
-    throw new Error(message);
+    const message = data.errorMessage || data.error || data.message || data.developerMessage || `HTTP ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -299,12 +316,25 @@ async function refreshMicrosoftAccount(accountId) {
   }
 
   progressBus.emitEvent('status', { message: `Refreshing Microsoft session for ${account.username}…` });
-  const token = await postForm(MS_TOKEN_URL, {
-    grant_type: 'refresh_token',
-    client_id: MS_CLIENT_ID,
-    refresh_token: account.refreshToken,
-    scope: MS_SCOPE
-  });
+  
+  let token;
+  try {
+    token = await postForm(MS_TOKEN_URL, {
+      grant_type: 'refresh_token',
+      client_id: MS_CLIENT_ID,
+      refresh_token: account.refreshToken,
+      scope: MS_SCOPE
+    });
+  } catch (error) {
+    // Provide clearer error messages for common refresh failures
+    if (error.code === 'invalid_grant' || error.status === 400) {
+      throw new Error(
+        `Your Microsoft session has expired or been revoked. Please sign out and sign in again. ` +
+        `(Original error: ${error.message || 'HTTP 400'})`
+      );
+    }
+    throw error;
+  }
 
   const updated = await completeMicrosoftAuth(
     {

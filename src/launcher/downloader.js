@@ -112,7 +112,7 @@ async function fetchJson(url, label = url, options = {}) {
       headers: { 'User-Agent': USER_AGENT }
     });
     if (!res.ok) {
-      const error = new Error(`HTTP ${res.status} ${res.statusText}`);
+      const error = new Error(`${label} failed: HTTP ${res.status} ${res.statusText} (${url})`);
       error.status = res.status;
       throw error;
     }
@@ -142,7 +142,7 @@ async function downloadFile(url, destination, options = {}) {
       headers: { 'User-Agent': USER_AGENT }
     });
     if (!response.ok || !response.body) {
-      const error = new Error(`HTTP ${response.status} ${response.statusText}`);
+      const error = new Error(`${label} failed: HTTP ${response.status} ${response.statusText} (${url})`);
       error.status = response.status;
       throw error;
     }
