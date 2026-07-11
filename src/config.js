@@ -28,6 +28,7 @@ const MS_TOKEN_URL = process.env.AMETHYST_MS_TOKEN_URL || (usingCustomMicrosoftC
 const FABRIC_META_URL = 'https://meta.fabricmc.net/v2';
 const QUILT_META_URL = 'https://meta.quiltmc.org/v3';
 const FORGE_MAVEN_URL = 'https://maven.minecraftforge.net';
+const FORGE_PROMOTIONS_URL = 'https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
 const NEOFORGE_MAVEN_URL = 'https://maven.neoforged.net/releases';
 const ADOPTIUM_API_URL = 'https://api.adoptium.net/v3';
 
@@ -64,10 +65,16 @@ module.exports = {
   MOJANG_MANIFEST_URL,
   NEWS_URL,
   RESOURCES_BASE_URL,
+  MS_CLIENT_ID,
+  MS_SCOPE,
+  MS_DEVICE_CODE_URL,
+  MS_TOKEN_URL,
   FABRIC_META_URL,
   QUILT_META_URL,
   FORGE_MAVEN_URL,
   FORGE_PROMOTIONS_URL,
+  NEOFORGE_MAVEN_URL,
+  ADOPTIUM_API_URL,
   getDataRoot,
   getDefaultSettings
 };
