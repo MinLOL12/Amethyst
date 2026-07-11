@@ -13,7 +13,7 @@ const { ensureDir } = require('./store');
 const USER_AGENT = 'AmethystLauncher/0.2 (+https://github.com/MinLOL12/Amethyst)';
 const DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_MAX_RETRIES = 5;
-const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND', 'EPROTO', 'EPIPE', 'ECONNABORTED', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT']);
+const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND', 'EPROTO', 'EPIPE', 'ECONNABORTED', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'ERR_SSL_PROTOCOL_ERROR', 'ERR_SSL_HANDSHAKE_FAILURE', 'ERR_TLS_CERT_ALTNAME_INVALID']);
 
 class ProgressBus extends EventEmitter {
   emitEvent(type, payload = {}) {
@@ -92,7 +92,13 @@ function isRetryableError(error) {
       msg.includes('failed to fetch') ||
       msg.includes('other side closed') ||
       msg.includes('size mismatch') ||
-      msg.includes('0 bytes')) {
+      msg.includes('0 bytes') ||
+      msg.includes('ssl') ||
+      msg.includes('tls') ||
+      msg.includes('certificate') ||
+      msg.includes('handshake') ||
+      msg.includes('dns') ||
+      msg.includes('resolve')) {
     return true;
   }
   return false;
@@ -143,18 +149,44 @@ async function fetchJson(url, label = url, options = {}) {
   const response = await withRetry(async (signal) => {
     const res = await fetch(url, {
       signal,
-      headers: { 'User-Agent': USER_AGENT, 'Accept': 'application/json' },
+      headers: { 
+        'User-Agent': USER_AGENT, 
+        'Accept': 'application/json',
+        'Connection': 'keep-alive'
+      },
       redirect: 'follow'
     });
     if (!res.ok) {
-      const error = new Error(`${label} failed: HTTP ${res.status} ${res.statusText} (${url})`);
+      let errorMsg = `${label} failed: HTTP ${res.status} ${res.statusText} (${url})`;
+      // Try to get more details from response
+      try {
+        const text = await res.text().catch(() => '');
+        if (text && text.length < 500) {
+          errorMsg += ` - ${text}`;
+        }
+      } catch (_) {}
+      const error = new Error(errorMsg);
       error.status = res.status;
-      markRetryable(error, res.status >= 500 || res.status === 429 || res.status === 408);
+      markRetryable(error, res.status >= 500 || res.status === 429 || res.status === 408 || res.status === 0);
       throw error;
     }
     return res;
   }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
-  return response.json();
+  
+  try {
+    return await response.json();
+  } catch (error) {
+    // Handle empty or invalid JSON responses
+    if (error.name === 'SyntaxError' || error.message.includes('Unexpected end of JSON')) {
+      const errorMsg = `Failed to parse JSON response from ${label}: ${error.message}`;
+      const parseError = new Error(errorMsg);
+      parseError.status = response.status || 0;
+      parseError.cause = error;
+      markRetryable(parseError, true);
+      throw parseError;
+    }
+    throw error;
+  }
 }
 
 // Build a list of mirror URLs to try, automatically expanding Minecraft asset URLs.
@@ -208,9 +240,17 @@ async function downloadFromUrlOnce(downloadUrl, temp, signal, label, destination
   });
 
   if (!response.ok || !response.body) {
-    const error = new Error(`HTTP ${response.status} ${response.statusText} for ${label}`);
+    let errorMsg = `HTTP ${response.status} ${response.statusText} for ${label}`;
+    // Try to get more details from response
+    try {
+      const text = await response.text().catch(() => '');
+      if (text && text.length < 500) {
+        errorMsg += ` - ${text}`;
+      }
+    } catch (_) {}
+    const error = new Error(errorMsg);
     error.status = response.status;
-    markRetryable(error, response.status >= 500 || response.status === 429 || response.status === 408);
+    markRetryable(error, response.status >= 500 || response.status === 429 || response.status === 408 || response.status === 0);
     throw error;
   }
 

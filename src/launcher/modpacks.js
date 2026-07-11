@@ -97,29 +97,55 @@ function getFabricMeta(){ try{ return require('../config').FABRIC_META_URL || 'h
 function getQuiltMeta(){ try{ return require('../config').QUILT_META_URL || 'https://meta.quiltmc.org/v3'; }catch{ return 'https://meta.quiltmc.org/v3'; } }
 
 async function fetchFabricLoaderVersions(mcVersion){
-  if(!mcVersion){ const url=`${getFabricMeta()}/versions/loader`; const d=await fetchJson(url,'Fabric loader list'); return d; }
-  const url=`${getFabricMeta()}/versions/loader/${encodeURIComponent(mcVersion)}`;
-  return fetchJson(url, `Fabric loader for ${mcVersion}`);
+  try {
+    if(!mcVersion){ const url=`${getFabricMeta()}/versions/loader`; const d=await fetchJson(url,'Fabric loader list'); return d; }
+    const url=`${getFabricMeta()}/versions/loader/${encodeURIComponent(mcVersion)}`;
+    return await fetchJson(url, `Fabric loader for ${mcVersion}`);
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Fabric loader versions for ${mcVersion || 'all versions'}: ${error.message}` });
+    throw error;
+  }
 }
 async function fetchFabricProfile(mcVersion, loaderVersion){
-  if(!loaderVersion){ const vers=await fetchFabricLoaderVersions(mcVersion); if(!vers.length) throw new Error(`No Fabric loader for ${mcVersion}`); loaderVersion=vers[0].loader.version; }
-  const url=`${getFabricMeta()}/versions/loader/${encodeURIComponent(mcVersion)}/${encodeURIComponent(loaderVersion)}/profile/json`;
-  const profile=await fetchJson(url, `Fabric profile ${mcVersion} ${loaderVersion}`);
-  return { profile, loaderVersion };
+  try {
+    if(!loaderVersion){ const vers=await fetchFabricLoaderVersions(mcVersion); if(!vers.length) throw new Error(`No Fabric loader for ${mcVersion}`); loaderVersion=vers[0].loader.version; }
+    const url=`${getFabricMeta()}/versions/loader/${encodeURIComponent(mcVersion)}/${encodeURIComponent(loaderVersion)}/profile/json`;
+    const profile=await fetchJson(url, `Fabric profile ${mcVersion} ${loaderVersion}`);
+    return { profile, loaderVersion };
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Fabric profile for ${mcVersion} ${loaderVersion}: ${error.message}` });
+    throw error;
+  }
 }
 async function fetchQuiltLoaderVersions(mcVersion){
-  const url= mcVersion ? `${getQuiltMeta()}/versions/loader/${encodeURIComponent(mcVersion)}` : `${getQuiltMeta()}/versions/loader`;
-  return fetchJson(url, 'Quilt loader list');
+  try {
+    const url= mcVersion ? `${getQuiltMeta()}/versions/loader/${encodeURIComponent(mcVersion)}` : `${getQuiltMeta()}/versions/loader`;
+    return await fetchJson(url, 'Quilt loader list');
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Quilt loader versions for ${mcVersion || 'all versions'}: ${error.message}` });
+    throw error;
+  }
 }
 async function fetchQuiltProfile(mcVersion, loaderVersion){
-  if(!loaderVersion){ const vers=await fetchQuiltLoaderVersions(mcVersion); if(!vers.length) throw new Error(`No Quilt loader for ${mcVersion}`); loaderVersion=vers[0].loader.version; }
-  const url=`${getQuiltMeta()}/versions/loader/${encodeURIComponent(mcVersion)}/${encodeURIComponent(loaderVersion)}/profile/json`;
-  const profile=await fetchJson(url, `Quilt profile ${mcVersion} ${loaderVersion}`);
-  return { profile, loaderVersion };
+  try {
+    if(!loaderVersion){ const vers=await fetchQuiltLoaderVersions(mcVersion); if(!vers.length) throw new Error(`No Quilt loader for ${mcVersion}`); loaderVersion=vers[0].loader.version; }
+    const url=`${getQuiltMeta()}/versions/loader/${encodeURIComponent(mcVersion)}/${encodeURIComponent(loaderVersion)}/profile/json`;
+    const profile=await fetchJson(url, `Quilt profile ${mcVersion} ${loaderVersion}`);
+    return { profile, loaderVersion };
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Quilt profile for ${mcVersion} ${loaderVersion}: ${error.message}` });
+    throw error;
+  }
 }
 async function fetchForgePromotions(){
-  const url='https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
-  try{ const data=await fetchJson(url,'Forge promotions'); return data.promos||{}; }catch{ return {}; }
+  try {
+    const url='https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
+    const data=await fetchJson(url,'Forge promotions');
+    return data.promos||{};
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Forge promotions: ${error.message}. Using Maven metadata instead.` });
+    return {};
+  }
 }
 async function fetchForgeVersions(mcVersion){
   // Try Maven metadata first — it is more complete and reliable than the
@@ -128,7 +154,8 @@ async function fetchForgeVersions(mcVersion){
     const { FORGE_MAVEN_URL } = require('../config');
     const metaUrl = `${FORGE_MAVEN_URL}/net/minecraftforge/forge/maven-metadata.xml`;
     const response = await fetch(metaUrl, {
-      headers: { 'User-Agent': 'AmethystLauncher/0.2' }
+      headers: { 'User-Agent': 'AmethystLauncher/0.2' },
+      redirect: 'follow'
     });
     if (response.ok) {
       const xml = await response.text();
@@ -145,27 +172,43 @@ async function fetchForgeVersions(mcVersion){
         }));
       }
     }
-  } catch (_) { /* fall through to promotions */ }
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Forge Maven metadata for ${mcVersion}: ${error.message}. Trying promotions endpoint...` });
+    /* fall through to promotions */
+  }
 
   // Fallback: the classic promotions endpoint.
-  const promos=await fetchForgePromotions();
-  const versions=[];
-  for(const [key,ver] of Object.entries(promos)){
-    if(!key.includes('-')) continue;
-    const [mc,type]=key.split('-');
-    if(mcVersion && mc!==mcVersion) continue;
-    versions.push({ mcVersion:mc, type, forgeVersion:ver, id:`${mc}-${ver}` });
+  try {
+    const promos=await fetchForgePromotions();
+    const versions=[];
+    for(const [key,ver] of Object.entries(promos)){
+      if(!key.includes('-')) continue;
+      const [mc,type]=key.split('-');
+      if(mcVersion && mc!==mcVersion) continue;
+      versions.push({ mcVersion:mc, type, forgeVersion:ver, id:`${mc}-${ver}` });
+    }
+    return versions.sort((a,b)=>b.forgeVersion.localeCompare(a.forgeVersion));
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Forge versions for ${mcVersion}: ${error.message}` });
+    return [];
   }
-  return versions.sort((a,b)=>b.forgeVersion.localeCompare(a.forgeVersion));
 }
 async function fetchNeoForgeVersions(){
   try{
     const url='https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml';
-    const resp=await fetch(url,{headers:{'User-Agent':'AmethystLauncher/0.2'}});
+    const resp=await fetch(url,{headers:{'User-Agent':'AmethystLauncher/0.2'}, redirect: 'follow'});
+    if (!resp.ok) {
+      const error = new Error(`NeoForge metadata HTTP ${resp.status}`);
+      error.status = resp.status;
+      throw error;
+    }
     const text=await resp.text();
     const matches=[...text.matchAll(/<version>([^<]+)<\/version>/g)].map(m=>m[1]);
     return matches.slice(-100).reverse().map(v=>({ neoForgeVersion:v, id:v }));
-  }catch{ return []; }
+  }catch(error){
+    progressBus.emitEvent('status', { message: `Failed to fetch NeoForge versions: ${error.message}` });
+    return [];
+  }
 }
 
 async function installModpack(id, options={}){
