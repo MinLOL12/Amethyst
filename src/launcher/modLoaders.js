@@ -289,10 +289,8 @@ async function installQuilt(gameVersion, loaderVersion, options = {}) {
 }
 
 /**
- * Install Forge / NeoForge with its official installer. Extracting version.json
- * alone is not enough: modern installers run processors, create patched jars,
- * and download bootstrap libraries. Skipping those steps produces a profile
- * that starts as vanilla (or fails before the loader can discover mods).
+ * Forge / NeoForge: run the official installer, then locate the installed profile.
+ * Falls back to extracting version.json if the installer cannot be executed (e.g. no Java).
  */
 async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) {
   const label = kind === 'neoforge' ? 'NeoForge' : 'Forge';
@@ -307,44 +305,151 @@ async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) 
   }
   if (!selected) throw new Error(`No ${label} version available for Minecraft ${gameVersion}`);
 
-  const forgeFullVersion = kind === 'forge' ? normalizeForgeVersion(gameVersion, selected) : selected;
-  const resolvedLoaderVersion = kind === 'forge' && selected.startsWith(`${gameVersion}-`)
-    ? selected.slice(gameVersion.length + 1)
-    : selected;
-  const gameDir = options.gameDir || path.join(require('../config').getDataRoot(), 'minecraft');
-
-  const existingVersionId = await findInstalledLoaderProfile(kind, gameVersion, resolvedLoaderVersion, gameDir);
-  if (existingVersionId) {
-    const profile = await readJson(path.join(gameDir, 'versions', existingVersionId, `${existingVersionId}.json`), null);
-    return {
-      versionId: existingVersionId,
-      loader: kind,
-      loaderVersion: resolvedLoaderVersion,
-      profile,
-      skipped: true
-    };
+  // Normalize Forge versions: the version list returns full "<mc>-<forge>" strings,
+  // but callers (modpacks, UI) sometimes pass just the forge build number.
+  let fullVersion = selected;
+  let mavenVersion = selected;
+  if (kind === 'forge') {
+    if (selected.startsWith(`${gameVersion}-`)) {
+      fullVersion = selected;
+      mavenVersion = selected;
+    } else {
+      fullVersion = `${gameVersion}-${selected}`;
+      mavenVersion = fullVersion;
+    }
+  } else {
+    // NeoForge: version is already the maven coordinate.
+    fullVersion = selected;
+    mavenVersion = selected;
   }
 
   const installerUrl = kind === 'neoforge'
-    ? `${NEOFORGE_MAVEN_URL}/net/neoforged/neoforge/${selected}/neoforge-${selected}-installer.jar`
-    : `${FORGE_MAVEN_URL}/net/minecraftforge/forge/${forgeFullVersion}/forge-${forgeFullVersion}-installer.jar`;
+    ? `${NEOFORGE_MAVEN_URL}/net/neoforged/neoforge/${mavenVersion}/neoforge-${mavenVersion}-installer.jar`
+    : `${FORGE_MAVEN_URL}/net/minecraftforge/forge/${mavenVersion}/forge-${mavenVersion}-installer.jar`;
+
+  const gameDir = options.gameDir || path.join(require('../config').getDataRoot(), 'minecraft');
   const cacheDir = path.join(require('../config').getDataRoot(), 'cache', kind);
   await ensureDir(cacheDir);
   const installerPath = path.join(cacheDir, path.basename(new URL(installerUrl).pathname));
-  await downloadFile(installerUrl, installerPath, { label: `${label} installer ${resolvedLoaderVersion}` });
 
-  let javaPath = options.javaPath;
-  if (!javaPath) {
-    const { readSettings } = require('./accounts');
-    const { recommendedJavaMajor } = require('./javaLocator');
+  await downloadFile(installerUrl, installerPath, {
+    label: `${label} installer ${mavenVersion}`
+  });
+
+  // Ensure the base vanilla version is fully installed before running the Forge/NeoForge installer,
+  // matching the official installer's expectations and the modpack flow.
+  try {
+    const { installVersion } = require('./minecraft');
+    // Explicitly run a vanilla install to populate client jar, libraries, assets.
+    await installVersion(gameVersion, {
+      gameDir,
+      loader: 'vanilla',
+      concurrency: options.concurrency || 8,
+      skipExistingCheck: true
+    });
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Warning: vanilla pre-install failed: ${error.message}` });
+  }
+
+  // Try to run the official installer so modern Forge/NeoForge (1.13+) processors execute.
+  let installerSucceeded = false;
+  let detectedVersionId = null;
+  try {
+    // Dynamically require java helpers to avoid circular dependency at module load time.
+    const { pickJava, recommendedJavaRequirement } = require('./javaLocator');
     const { resolveJavaForLaunch, autoDownloadIfMissing } = require('./javaManager');
-    const parentMeta = await readJson(path.join(gameDir, 'versions', gameVersion, `${gameVersion}.json`), null)
-      || await getVersionMeta(gameVersion);
-    const requiredMajor = recommendedJavaMajor(parentMeta);
-    const settings = await readSettings();
-    const java = await resolveJavaForLaunch(requiredMajor, settings.javaPath)
-      || (options.autoDownloadJava === false ? null : await autoDownloadIfMissing(requiredMajor));
-    javaPath = java?.path;
+    const { runForgeInstaller, findInstalledLoaderVersion } = require('./forgeInstaller');
+    const { getVersionMeta } = require('./mojangApi');
+
+    // Determine which Java major the target Minecraft version recommends.
+    let requiredMajor = 17;
+    try {
+      const vanillaMeta = await getVersionMeta(gameVersion);
+      const req = recommendedJavaRequirement(vanillaMeta);
+      requiredMajor = req.major || recommendedJavaMajor(vanillaMeta) || 17;
+    } catch (_) {
+      requiredMajor = gameVersion.startsWith('1.20') || gameVersion.startsWith('1.21') ? 17 : 8;
+    }
+
+    let java = null;
+    // 1) explicit javaPath in options (per-instance override)
+    if (options.javaPath) {
+      try { java = await pickJava(requiredMajor, options.javaPath); } catch (_) {}
+    }
+    // 2) resolve via settings / managed runtimes
+    if (!java) {
+      try { java = await resolveJavaForLaunch(requiredMajor, ''); } catch (_) {}
+    }
+    // 3) auto-download if missing and allowed
+    if (!java && options.autoDownloadJava !== false) {
+      try { java = await autoDownloadIfMissing(requiredMajor); } catch (error) {
+        progressBus.emitEvent('status', { message: `Java auto-download failed: ${error.message}` });
+      }
+    }
+    // 4) last-ditch: pick any available Java
+    if (!java) {
+      try { java = await pickJava(requiredMajor, ''); } catch (_) {}
+    }
+
+    if (java && java.path) {
+      // Forge expects the gameDir to look like a vanilla launcher folder.
+      await runForgeInstaller({
+        javaPath: java.path,
+        installerPath,
+        gameDir,
+        cwd: path.dirname(installerPath),
+        loader: kind,
+        loaderVersion: kind === 'forge' ? fullVersion.replace(`${gameVersion}-`, '') : mavenVersion,
+        minecraftVersion: gameVersion,
+        modpackName: options.modpackName || `Amethyst ${label}`
+      });
+      installerSucceeded = true;
+
+      // Locate the profile the installer just created.
+      const forgeBuild = kind === 'forge' ? fullVersion.replace(`${gameVersion}-`, '') : mavenVersion;
+      detectedVersionId = await findInstalledLoaderVersion(gameDir, {
+        loader: kind,
+        loaderVersion: forgeBuild
+      });
+      // Some installers register the full "<mc>-<forge>" string; try that too.
+      if (!detectedVersionId && kind === 'forge') {
+        detectedVersionId = await findInstalledLoaderVersion(gameDir, {
+          loader: kind,
+          loaderVersion: fullVersion
+        });
+      }
+    } else {
+      progressBus.emitEvent('status', { message: `${label} installer skipped: no compatible Java ${requiredMajor}+ found` });
+    }
+  } catch (installerError) {
+    progressBus.emitEvent('status', { message: `${label} installer failed: ${installerError.message} — falling back to profile extraction` });
+    installerSucceeded = false;
+  }
+
+  // If the installer ran and produced a version profile, use it.
+  if (installerSucceeded && detectedVersionId) {
+    const profilePath = path.join(gameDir, 'versions', detectedVersionId, `${detectedVersionId}.json`);
+    let profile = null;
+    try {
+      profile = await readJson(profilePath, null);
+    } catch (_) {
+      profile = null;
+    }
+    if (profile) {
+      const paths = gamePaths(gameDir, detectedVersionId);
+      await ensureDir(paths.versionDir);
+      // Ensure libraries referenced by the installed profile are present.
+      await downloadProfileLibraries(profile, paths, options.concurrency || 8);
+      progressBus.emitEvent('status', { message: `${label} profile ${detectedVersionId} ready` });
+      return {
+        versionId: detectedVersionId,
+        loader: kind,
+        loaderVersion: kind === 'forge' ? fullVersion.replace(`${gameVersion}-`, '') : mavenVersion,
+        installerPath,
+        profile,
+        installedViaInstaller: true
+      };
+    }
   }
   if (!javaPath) throw new Error(`No compatible Java runtime found for the ${label} installer.`);
 
@@ -359,24 +464,83 @@ async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) 
     modpackName: options.name || options.modpackName || `Amethyst ${label} ${gameVersion}`
   });
 
-  const versionId = await findInstalledLoaderVersion(gameDir, {
-    loader: kind,
-    loaderVersion: resolvedLoaderVersion
-  });
-  if (!versionId) {
-    throw new Error(`${label} installer completed, but no ${resolvedLoaderVersion} profile was created.`);
-  }
-  const profile = await readJson(path.join(gameDir, 'versions', versionId, `${versionId}.json`), null);
-  if (!profile) throw new Error(`${label} profile ${versionId} is unreadable after installation.`);
+  // Fallback: extract version.json from the installer jar (works for older Forge).
+  try {
+    const entries = await extractZipEntries(installerPath);
+    const versionEntry =
+      entries.find((e) => e.name === 'version.json') ||
+      entries.find((e) => e.name.endsWith('/version.json')) ||
+      entries.find((e) => /version\.json$/i.test(e.name));
 
-  progressBus.emitEvent('status', { message: `${label} profile ${versionId} ready` });
-  return {
-    versionId,
-    loader: kind,
-    loaderVersion: resolvedLoaderVersion,
-    installerPath,
-    profile
+    if (versionEntry) {
+      const profile = JSON.parse(versionEntry.data.toString('utf8'));
+      const versionId = profile.id || (kind === 'neoforge' ? `neoforge-${mavenVersion}` : `${gameVersion}-forge-${mavenVersion}`) || detectedVersionId || fullVersion;
+      profile.id = versionId;
+      if (!profile.inheritsFrom) profile.inheritsFrom = gameVersion;
+
+      const paths = gamePaths(gameDir, versionId);
+      await ensureDir(paths.versionDir);
+      await writeJson(paths.versionJson, profile);
+      await downloadProfileLibraries(profile, paths, options.concurrency || 8);
+
+      // Also ensure vanilla parent exists as metadata.
+      try {
+        const parentId = profile.inheritsFrom || gameVersion;
+        const parentMeta = await getVersionMeta(parentId);
+        const parentPaths = gamePaths(gameDir, parentId);
+        await ensureDir(parentPaths.versionDir);
+        await writeJson(parentPaths.versionJson, parentMeta);
+      } catch (_) {
+        // Parent may already be installed or offline.
+      }
+
+      progressBus.emitEvent('status', { message: `${label} profile ${versionId} ready (extracted)` });
+      return { versionId, loader: kind, loaderVersion: selected, installerPath, profile, installedViaInstaller: false };
+    }
+  } catch (extractError) {
+    progressBus.emitEvent('status', { message: `${label} profile extraction failed: ${extractError.message}` });
+  }
+
+  // Last resort: create a thin inheriting profile so the game at least launches vanilla,
+  // but mark it clearly so users know loader libraries are missing.
+  const fallbackVersionId = kind === 'neoforge'
+    ? `neoforge-${mavenVersion}`
+    : `${gameVersion}-forge-${fullVersion.replace(`${gameVersion}-`, '')}`;
+  const paths = gamePaths(gameDir, fallbackVersionId);
+  await ensureDir(paths.versionDir);
+  const stub = {
+    id: fallbackVersionId,
+    inheritsFrom: gameVersion,
+    time: new Date().toISOString(),
+    releaseTime: new Date().toISOString(),
+    type: 'release',
+    mainClass: 'net.minecraft.client.main.Main',
+    libraries: [],
+    arguments: { game: [], jvm: [] },
+    _amethyst: {
+      loader: kind,
+      loaderVersion: selected,
+      installerPath,
+      installerSucceeded,
+      detectedVersionId,
+      note: installerSucceeded
+        ? `${label} installer ran but no version profile was detected. Launching vanilla fallback.`
+        : `${label} installer could not run (missing Java?). Launching vanilla fallback; install Java ${gameVersion.startsWith('1.18') || gameVersion.startsWith('1.19') || gameVersion.startsWith('1.20') || gameVersion.startsWith('1.21') ? '17' : '8'}+ to enable ${label}.`
+    }
   };
+  await writeJson(paths.versionJson, stub);
+  // Ensure base vanilla is available.
+  try {
+    const vanillaMeta = await getVersionMeta(gameVersion);
+    const vanillaPaths = gamePaths(gameDir, gameVersion);
+    await ensureDir(vanillaPaths.versionDir);
+    await writeJson(vanillaPaths.versionJson, vanillaMeta);
+  } catch (_) {}
+
+  progressBus.emitEvent('status', {
+    message: `${label} installer did not produce a loader profile — using vanilla fallback ${fallbackVersionId}.`
+  });
+  return { versionId: fallbackVersionId, loader: kind, loaderVersion: selected, installerPath, profile: stub, installedViaInstaller: installerSucceeded, fallback: true };
 }
 
 async function downloadProfileLibraries(profile, paths, concurrency = 8) {
