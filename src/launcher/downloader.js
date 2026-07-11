@@ -147,7 +147,7 @@ async function fetchJson(url, label = url, options = {}) {
       redirect: 'follow'
     });
     if (!res.ok) {
-      const error = new Error(`HTTP ${res.status} ${res.statusText}`);
+      const error = new Error(`${label} failed: HTTP ${res.status} ${res.statusText} (${url})`);
       error.status = res.status;
       markRetryable(error, res.status >= 500 || res.status === 429 || res.status === 408);
       throw error;

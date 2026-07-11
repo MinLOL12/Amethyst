@@ -26,6 +26,7 @@ const state = {
   skinSourceUrl: '',
   loaderVersions: {},
   loaderRequestId: 0,
+  gameRunning: false,
 };
 
 const pageLabels = {
@@ -1145,10 +1146,14 @@ function connectEvents() {
         break;
       case 'task-complete':
       case 'queue-complete':
-        setBusy(false, 'Ready');
+        setBusy(false, state.gameRunning ? 'Minecraft running' : 'Ready');
         setProgress(100, 'Complete');
-        updateModal('✓', 'Everything is ready.', true);
-        notify(`${event.name} completed.`, 'success');
+        // launch-start already confirmed that Java stayed alive through startup;
+        // do not replace that state with the misleading generic "Ready" modal.
+        if (!state.gameRunning) {
+          updateModal('✓', 'Everything is ready.', true);
+          notify(`${event.name} completed.`, 'success');
+        }
         log(`Complete: ${event.name}`);
         break;
       case 'task-error':
@@ -1180,13 +1185,29 @@ function connectEvents() {
         $('#modal-status-text').textContent = event.message;
         break;
       case 'launch-start':
+        state.gameRunning = true;
         log(`Launching ${event.versionId} with ${event.loaderType && event.loaderType !== 'vanilla' ? `${event.loaderType} ${event.loaderVersion || ''}`.trim() : 'vanilla'} (${event.mainClass || 'Minecraft'}) using ${event.java}`);
-        setBusy(false, 'Ready');
+        setBusy(false, 'Minecraft starting');
         hideModal();
-        notify(`Minecraft ${event.versionId} is launching.`);
+        notify(`Minecraft ${event.versionId} is starting.`);
         break;
       case 'game-log': log((event.message || '').trim()); break;
-      case 'launch-exit': log(`Minecraft exited with code ${event.code ?? 'n/a'}${event.signal ? ` (${event.signal})` : ''}.`); break;
+      case 'launch-error':
+        state.gameRunning = false;
+        setBusy(false, 'Launch failed');
+        updateModal('!', event.message || 'Minecraft could not start.', false, true);
+        notify(event.message || 'Minecraft could not start.', 'error');
+        log(event.message || 'Minecraft could not start.', 'error');
+        break;
+      case 'launch-exit': {
+        state.gameRunning = false;
+        const failed = event.code !== 0 || Boolean(event.signal);
+        setBusy(false, failed ? 'Launch failed' : 'Ready');
+        const message = `Minecraft exited with code ${event.code ?? 'n/a'}${event.signal ? ` (${event.signal})` : ''}.`;
+        log(message, failed ? 'error' : 'info');
+        if (failed) notify(`${message} See the launcher log for the Java error.`, 'error');
+        break;
+      }
       default: break;
     }
   };
