@@ -205,6 +205,11 @@ async function saveSettings(partial) {
   next.rememberMicrosoftLogin = next.rememberMicrosoftLogin !== false;
   next.jvmArgs = String(next.jvmArgs || '');
   next.launchArgs = String(next.launchArgs || '');
+  const loaderType = String(next.loaderType || 'vanilla').toLowerCase();
+  next.loaderType = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'].includes(loaderType)
+    ? loaderType
+    : 'vanilla';
+  next.loaderVersion = next.loaderType === 'vanilla' ? '' : String(next.loaderVersion || '');
   await writeJson(paths().settings, next);
   return next;
 }

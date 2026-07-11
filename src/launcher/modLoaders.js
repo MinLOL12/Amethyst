@@ -10,11 +10,96 @@ const { fetchJson, downloadFile, progressBus } = require('./downloader');
 const { getVersionMeta, artifactPathFromName } = require('./mojangApi');
 const { ensureDir, writeJson, readJson } = require('./store');
 const { gamePaths } = require('./minecraftPaths');
+const { runForgeInstaller, findInstalledLoaderVersion } = require('./forgeInstaller');
 
 const LOADERS = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'];
 
-async function listLoaderVersions(loader, gameVersion) {
+function normalizeLoader(loader) {
   const kind = String(loader || 'vanilla').toLowerCase();
+  if (!LOADERS.includes(kind)) throw new Error(`Unknown mod loader: ${loader}`);
+  return kind;
+}
+
+function normalizeForgeVersion(gameVersion, loaderVersion) {
+  const selected = String(loaderVersion || '');
+  return selected.startsWith(`${gameVersion}-`) ? selected : `${gameVersion}-${selected}`;
+}
+
+/** Return the version id produced by the official loader profile. */
+function loaderVersionId(loader, gameVersion, loaderVersion) {
+  const kind = normalizeLoader(loader);
+  const selected = String(loaderVersion || '');
+  if (kind === 'vanilla' || !selected) return gameVersion;
+  if (kind === 'fabric') return `fabric-loader-${selected}-${gameVersion}`;
+  if (kind === 'quilt') return `quilt-loader-${selected}-${gameVersion}`;
+  if (kind === 'forge') {
+    const forgeVersion = selected.startsWith(`${gameVersion}-`)
+      ? selected.slice(gameVersion.length + 1)
+      : selected;
+    return `${gameVersion}-forge-${forgeVersion}`;
+  }
+  return `neoforge-${selected}`;
+}
+
+function loaderMarker(kind) {
+  if (kind === 'fabric') return 'fabric';
+  if (kind === 'quilt') return 'quilt';
+  if (kind === 'forge') return 'forge';
+  if (kind === 'neoforge') return 'neoforge';
+  return '';
+}
+
+/**
+ * Find an installed loader profile instead of assuming an id. Forge and
+ * NeoForge ids have changed between installer generations, while Fabric and
+ * Quilt may also return a custom id from their profile API.
+ */
+async function findInstalledLoaderProfile(loader, gameVersion, loaderVersion, gameDir) {
+  const kind = normalizeLoader(loader);
+  if (kind === 'vanilla') return gameVersion;
+
+  const versionsDir = path.join(gameDir, 'versions');
+  const expected = loaderVersionId(kind, gameVersion, loaderVersion);
+  const entries = [];
+  try {
+    for (const entry of await fs.readdir(versionsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) entries.push(entry.name);
+    }
+  } catch (_) {
+    return null;
+  }
+
+  // Prefer the deterministic id when it exists.
+  entries.sort((a, b) => Number(b === expected) - Number(a === expected));
+  const marker = loaderMarker(kind);
+  const wantedVersion = String(loaderVersion || '').toLowerCase();
+
+  for (const id of entries) {
+    const meta = await readJson(path.join(versionsDir, id, `${id}.json`), null).catch(() => null);
+    if (!meta) continue;
+    const loaderLibraries = (meta.libraries || []).map((library) => library?.name || '').join(' ').toLowerCase();
+    const searchable = [
+      id,
+      meta.id,
+      meta.mainClass,
+      meta.inheritsFrom,
+      loaderLibraries
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (!searchable.includes(marker)) continue;
+    if (kind === 'forge' && searchable.includes('neoforge')) continue;
+    // Old Amethyst builds created a vanilla-mainClass Forge stub by merely
+    // extracting the installer. It looks like a loader profile by filename but
+    // cannot load mods and must be repaired by running the real installer.
+    if (meta.mainClass === 'net.minecraft.client.main.Main' && !loaderLibraries.includes(marker)) continue;
+    if (wantedVersion && !searchable.includes(wantedVersion)) continue;
+    if (gameVersion && meta.inheritsFrom && meta.inheritsFrom !== gameVersion && !searchable.includes(gameVersion.toLowerCase())) continue;
+    return id;
+  }
+  return null;
+}
+
+async function listLoaderVersions(loader, gameVersion) {
+  const kind = normalizeLoader(loader);
   if (kind === 'vanilla') return { loader: 'vanilla', versions: [{ version: 'vanilla', stable: true }] };
   if (!gameVersion) throw new Error('gameVersion is required for mod loader lookup');
 
@@ -142,7 +227,7 @@ async function listNeoForgeVersions(gameVersion) {
  * Install a mod loader profile into the shared versions folder and return the profile version id.
  */
 async function installLoader(loader, gameVersion, loaderVersion, options = {}) {
-  const kind = String(loader || 'vanilla').toLowerCase();
+  const kind = normalizeLoader(loader);
   if (kind === 'vanilla') {
     return { versionId: gameVersion, loader: 'vanilla' };
   }
@@ -204,102 +289,94 @@ async function installQuilt(gameVersion, loaderVersion, options = {}) {
 }
 
 /**
- * Forge / NeoForge: download installer jar and extract the version profile from it.
- * Full installer execution is complex; we extract version.json / install_profile.json
- * and download required libraries when the profile is present.
+ * Install Forge / NeoForge with its official installer. Extracting version.json
+ * alone is not enough: modern installers run processors, create patched jars,
+ * and download bootstrap libraries. Skipping those steps produces a profile
+ * that starts as vanilla (or fails before the loader can discover mods).
  */
 async function installForgeLike(kind, gameVersion, loaderVersion, options = {}) {
   const label = kind === 'neoforge' ? 'NeoForge' : 'Forge';
   progressBus.emitEvent('status', { message: `Preparing ${label} ${loaderVersion || ''} for ${gameVersion}…` });
 
-  let selected = loaderVersion;
+  let selected = String(loaderVersion || '');
   if (!selected) {
     const listed = kind === 'neoforge'
       ? await listNeoForgeVersions(gameVersion)
       : await listForgeVersions(gameVersion);
-    selected = listed.versions[0]?.version;
+    selected = listed.versions[0]?.version || '';
   }
   if (!selected) throw new Error(`No ${label} version available for Minecraft ${gameVersion}`);
 
+  const forgeFullVersion = kind === 'forge' ? normalizeForgeVersion(gameVersion, selected) : selected;
+  const resolvedLoaderVersion = kind === 'forge' && selected.startsWith(`${gameVersion}-`)
+    ? selected.slice(gameVersion.length + 1)
+    : selected;
+  const gameDir = options.gameDir || path.join(require('../config').getDataRoot(), 'minecraft');
+
+  const existingVersionId = await findInstalledLoaderProfile(kind, gameVersion, resolvedLoaderVersion, gameDir);
+  if (existingVersionId) {
+    const profile = await readJson(path.join(gameDir, 'versions', existingVersionId, `${existingVersionId}.json`), null);
+    return {
+      versionId: existingVersionId,
+      loader: kind,
+      loaderVersion: resolvedLoaderVersion,
+      profile,
+      skipped: true
+    };
+  }
+
   const installerUrl = kind === 'neoforge'
     ? `${NEOFORGE_MAVEN_URL}/net/neoforged/neoforge/${selected}/neoforge-${selected}-installer.jar`
-    : `${FORGE_MAVEN_URL}/net/minecraftforge/forge/${selected}/forge-${selected}-installer.jar`;
-
-  const gameDir = options.gameDir || path.join(require('../config').getDataRoot(), 'minecraft');
+    : `${FORGE_MAVEN_URL}/net/minecraftforge/forge/${forgeFullVersion}/forge-${forgeFullVersion}-installer.jar`;
   const cacheDir = path.join(require('../config').getDataRoot(), 'cache', kind);
   await ensureDir(cacheDir);
   const installerPath = path.join(cacheDir, path.basename(new URL(installerUrl).pathname));
+  await downloadFile(installerUrl, installerPath, { label: `${label} installer ${resolvedLoaderVersion}` });
 
-  await downloadFile(installerUrl, installerPath, {
-    label: `${label} installer ${selected}`
+  let javaPath = options.javaPath;
+  if (!javaPath) {
+    const { readSettings } = require('./accounts');
+    const { recommendedJavaMajor } = require('./javaLocator');
+    const { resolveJavaForLaunch, autoDownloadIfMissing } = require('./javaManager');
+    const parentMeta = await readJson(path.join(gameDir, 'versions', gameVersion, `${gameVersion}.json`), null)
+      || await getVersionMeta(gameVersion);
+    const requiredMajor = recommendedJavaMajor(parentMeta);
+    const settings = await readSettings();
+    const java = await resolveJavaForLaunch(requiredMajor, settings.javaPath)
+      || (options.autoDownloadJava === false ? null : await autoDownloadIfMissing(requiredMajor));
+    javaPath = java?.path;
+  }
+  if (!javaPath) throw new Error(`No compatible Java runtime found for the ${label} installer.`);
+
+  await runForgeInstaller({
+    javaPath,
+    installerPath,
+    gameDir,
+    cwd: cacheDir,
+    loader: kind,
+    loaderVersion: resolvedLoaderVersion,
+    minecraftVersion: gameVersion,
+    modpackName: options.name || options.modpackName || `Amethyst ${label} ${gameVersion}`
   });
 
-  // Extract version.json from the installer jar.
-  const entries = await extractZipEntries(installerPath);
-  const versionEntry =
-    entries.find((e) => e.name === 'version.json') ||
-    entries.find((e) => e.name.endsWith('/version.json')) ||
-    entries.find((e) => /version\.json$/i.test(e.name));
-
-  if (!versionEntry) {
-    // Fallback: create a thin profile that points users to run the installer once.
-    const versionId = kind === 'neoforge'
-      ? `neoforge-${selected}`
-      : `${gameVersion}-forge-${selected}`;
-    const paths = gamePaths(gameDir, versionId);
-    await ensureDir(paths.versionDir);
-    const stub = {
-      id: versionId,
-      inheritsFrom: gameVersion,
-      time: new Date().toISOString(),
-      releaseTime: new Date().toISOString(),
-      type: 'release',
-      mainClass: 'net.minecraft.client.main.Main',
-      libraries: [],
-      arguments: { game: [], jvm: [] },
-      _amethyst: {
-        loader: kind,
-        loaderVersion: selected,
-        installerPath,
-        note: `${label} installer downloaded. Full client install may require running the official installer once if libraries are missing.`
-      }
-    };
-    await writeJson(paths.versionJson, stub);
-    // Ensure base vanilla is available.
-    const vanillaMeta = await getVersionMeta(gameVersion);
-    const vanillaPaths = gamePaths(gameDir, gameVersion);
-    await ensureDir(vanillaPaths.versionDir);
-    await writeJson(vanillaPaths.versionJson, vanillaMeta);
-
-    progressBus.emitEvent('status', {
-      message: `${label} installer cached. Profile ${versionId} created (inherits ${gameVersion}).`
-    });
-    return { versionId, loader: kind, loaderVersion: selected, installerPath, profile: stub };
+  const versionId = await findInstalledLoaderVersion(gameDir, {
+    loader: kind,
+    loaderVersion: resolvedLoaderVersion
+  });
+  if (!versionId) {
+    throw new Error(`${label} installer completed, but no ${resolvedLoaderVersion} profile was created.`);
   }
-
-  const profile = JSON.parse(versionEntry.data.toString('utf8'));
-  const versionId = profile.id || (kind === 'neoforge' ? `neoforge-${selected}` : `${gameVersion}-forge-${selected}`);
-  profile.id = versionId;
-  if (!profile.inheritsFrom) profile.inheritsFrom = gameVersion;
-
-  const paths = gamePaths(gameDir, versionId);
-  await ensureDir(paths.versionDir);
-  await writeJson(paths.versionJson, profile);
-  await downloadProfileLibraries(profile, paths, options.concurrency || 8);
-
-  // Also ensure vanilla parent exists as metadata.
-  try {
-    const parentId = profile.inheritsFrom || gameVersion;
-    const parentMeta = await getVersionMeta(parentId);
-    const parentPaths = gamePaths(gameDir, parentId);
-    await ensureDir(parentPaths.versionDir);
-    await writeJson(parentPaths.versionJson, parentMeta);
-  } catch (_) {
-    // Parent may already be installed or offline.
-  }
+  const profile = await readJson(path.join(gameDir, 'versions', versionId, `${versionId}.json`), null);
+  if (!profile) throw new Error(`${label} profile ${versionId} is unreadable after installation.`);
 
   progressBus.emitEvent('status', { message: `${label} profile ${versionId} ready` });
-  return { versionId, loader: kind, loaderVersion: selected, installerPath, profile };
+  return {
+    versionId,
+    loader: kind,
+    loaderVersion: resolvedLoaderVersion,
+    installerPath,
+    profile
+  };
 }
 
 async function downloadProfileLibraries(profile, paths, concurrency = 8) {
@@ -383,6 +460,9 @@ async function extractZipEntries(filePath) {
 
 module.exports = {
   LOADERS,
+  normalizeLoader,
+  loaderVersionId,
+  findInstalledLoaderProfile,
   listLoaderVersions,
   installLoader,
   listFabricVersions,
