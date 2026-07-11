@@ -317,12 +317,15 @@ async function checkVersionInstalled(versionId, options = {}) {
         gameDir,
         loader: selection.loader,
         loaderVersion: selection.loaderVersion,
+        missing: [path.join(gameDir, 'versions', loaderVersionId(selection.loader, baseVersionId, selection.loaderVersion))],
+        missingCount: 1,
         reason: 'mod-loader-profile-missing'
       };
     }
   }
 
   const paths = gamePaths(gameDir, resolvedVersionId);
+  const missing = [];
   try {
     await fs.access(paths.versionJson);
     const details = await resolveVersionDetails(resolvedVersionId, gameDir);
@@ -330,21 +333,38 @@ async function checkVersionInstalled(versionId, options = {}) {
       ...paths,
       clientJar: gamePaths(gameDir, details.clientVersionId).clientJar
     };
-    await fs.access(effectivePaths.clientJar);
+    try { await fs.access(effectivePaths.clientJar); } catch (_) { missing.push(effectivePaths.clientJar); }
 
-    const { downloads } = getLibraryDownloads(details.versionMeta, effectivePaths);
-    let missingLibraries = 0;
+    const { downloads, natives } = getLibraryDownloads(details.versionMeta, effectivePaths);
     for (const download of downloads) {
-      try { await fs.access(download.destination); } catch (_) { missingLibraries += 1; }
+      try { await fs.access(download.destination); } catch (_) { missing.push(download.destination); }
     }
 
     const assetIndexId = details.versionMeta.assetIndex?.id || details.versionMeta.assets || 'legacy';
     const assetIndexPath = path.join(effectivePaths.assetIndexes, `${assetIndexId}.json`);
     let assetIndexExists = false;
-    try { await fs.access(assetIndexPath); assetIndexExists = true; } catch (_) {}
+    try {
+      const assetIndex = JSON.parse(await fs.readFile(assetIndexPath, 'utf8'));
+      assetIndexExists = true;
+      for (const object of Object.values(assetIndex.objects || {})) {
+        if (!object?.hash) continue;
+        const assetPath = path.join(effectivePaths.assetObjects, object.hash.slice(0, 2), object.hash);
+        try { await fs.access(assetPath); } catch (_) { missing.push(assetPath); }
+      }
+    } catch (_) {
+      missing.push(assetIndexPath);
+    }
+
+    if (natives.length) {
+      try {
+        if (!(await fs.readdir(effectivePaths.natives)).length) missing.push(effectivePaths.natives);
+      } catch (_) {
+        missing.push(effectivePaths.natives);
+      }
+    }
 
     return {
-      installed: missingLibraries === 0 && assetIndexExists,
+      installed: missing.length === 0,
       versionId: resolvedVersionId,
       baseVersionId,
       gameDir,
@@ -352,11 +372,14 @@ async function checkVersionInstalled(versionId, options = {}) {
       versionMeta: details.versionMeta,
       loader: selection.loader,
       loaderVersion: selection.loaderVersion,
-      missingLibraries,
+      missing: missing.slice(0, 25),
+      missingCount: missing.length,
+      missingLibraries: downloads.filter((download) => missing.includes(download.destination)).length,
       totalLibraries: downloads.length,
       assetIndexExists
     };
   } catch (error) {
+    if (error.code === 'ENOENT') missing.push(paths.versionJson);
     return {
       installed: false,
       versionId: resolvedVersionId,
@@ -365,6 +388,8 @@ async function checkVersionInstalled(versionId, options = {}) {
       paths,
       loader: selection.loader,
       loaderVersion: selection.loaderVersion,
+      missing: missing.slice(0, 25),
+      missingCount: Math.max(1, missing.length),
       reason: error.code === 'ENOENT' ? 'required-file-missing' : error.message
     };
   }
