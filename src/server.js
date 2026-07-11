@@ -88,9 +88,7 @@ function mimeType(file) {
 function json(response, statusCode, value) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS'
+    'Cache-Control': 'no-store'
   });
   response.end(JSON.stringify(value, null, 2));
 }
@@ -162,27 +160,12 @@ function matchRoute(pathname, pattern) {
 }
 
 async function handleApi(request, response, url) {
-  // Add CORS headers for all API responses
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-  };
-  
-  // Handle OPTIONS preflight requests
-  if (request.method === 'OPTIONS') {
-    response.writeHead(204, corsHeaders);
-    response.end();
-    return;
-  }
-
   if (url.pathname === '/api/events') {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store',
       Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-      ...corsHeaders
+      'X-Accel-Buffering': 'no'
     });
     response.write(
       `data: ${JSON.stringify({ type: 'hello', app: APP_NAME, version: APP_VERSION, at: new Date().toISOString() })}\n\n`
@@ -720,41 +703,7 @@ function createServer() {
       if (url.pathname.startsWith('/api/')) await handleApi(request, response, url);
       else await serveStatic(request, response, url.pathname);
     } catch (error) {
-      // Log the full error for debugging
-      console.error('Server error:', error);
-      
-      // Provide more detailed error information
-      const errorResponse = {
-        error: error.message || 'Internal server error',
-        code: error.code,
-        status: error.status
-      };
-      
-      // Check if this is a fetch-related error
-      if (error.message && (error.message.includes('Failed to fetch') || 
-                           error.message.includes('fetch') || 
-                           error.message.includes('network'))) {
-        errorResponse.type = 'NETWORK_ERROR';
-        errorResponse.hint = 'Check your internet connection or try again later.';
-      }
-      
-      // Check if this is a timeout error
-      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
-        errorResponse.type = 'TIMEOUT_ERROR';
-        errorResponse.hint = 'The request timed out. Please check your connection and try again.';
-      }
-      
-      // Check if this is a JSON parsing error
-      if (error.name === 'SyntaxError' || error.message?.includes('JSON')) {
-        errorResponse.type = 'PARSE_ERROR';
-        errorResponse.hint = 'Failed to parse the response. The server may be down or returning invalid data.';
-      }
-      
-      // Add CORS headers to error responses
-      response.setHeader('Access-Control-Allow-Origin', '*');
-      response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, PATCH, OPTIONS');
-      
-      json(response, 500, errorResponse);
+      json(response, 500, { error: error.message });
     }
   });
 }

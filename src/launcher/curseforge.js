@@ -10,30 +10,20 @@ function getApiKey() {
 async function cfFetch(url, label) {
   const key = getApiKey();
   if (!key) {
-    const error = new Error('CurseForge API key not configured. Set CURSEFORGE_API_KEY env var to enable CurseForge browsing. You can get a key from https://console.curseforge.com/');
-    error.status = 401;
-    throw error;
+    throw new Error('CurseForge API key not configured. Set CURSEFORGE_API_KEY env var to enable CurseForge browsing. You can get a key from https://console.curseforge.com/');
   }
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'x-api-key': key,
-        'Accept': 'application/json',
-        'User-Agent': 'AmethystLauncher/0.1',
-      },
-      redirect: 'follow'
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      const error = new Error(`CurseForge ${label} failed: HTTP ${response.status} ${text.slice(0, 500)}`);
-      error.status = response.status;
-      throw error;
+  const response = await fetch(url, {
+    headers: {
+      'x-api-key': key,
+      'Accept': 'application/json',
+      'User-Agent': 'AmethystLauncher/0.1',
     }
-    return await response.json();
-  } catch (error) {
-    progressBus.emitEvent('status', { message: `CurseForge ${label} failed: ${error.message}` });
-    throw error;
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`CurseForge ${label} failed: HTTP ${response.status} ${text.slice(0, 500)}`);
   }
+  return response.json();
 }
 
 function mapLoaderToCf(modLoaderType) {
