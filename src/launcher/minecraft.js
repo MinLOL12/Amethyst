@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { APP_NAME, APP_VERSION, RESOURCES_BASE_URL } = require('../config');
+const { APP_NAME, APP_VERSION, RESOURCES_BASE_URL, getAssetUrls } = require('../config');
 const { getVersionMeta, artifactPathFromName } = require('./mojangApi');
 const { downloadFile, mapLimit, progressBus } = require('./downloader');
 const { ensureDir, writeJson, readJson } = require('./store');
@@ -166,7 +166,9 @@ async function downloadAssets(versionMeta, paths, concurrency) {
   await downloadFile(versionMeta.assetIndex.url, assetIndexPath, {
     sha1: versionMeta.assetIndex.sha1,
     size: versionMeta.assetIndex.size,
-    label: `asset index ${assetIndexId}`
+    label: `asset index ${assetIndexId}`,
+    // asset indexes are small – give them a couple extra retries
+    maxRetries: 6
   });
 
   const assetIndex = JSON.parse(await fs.readFile(assetIndexPath, 'utf8'));
@@ -174,19 +176,42 @@ async function downloadAssets(versionMeta, paths, concurrency) {
   progressBus.emitEvent('status', { message: `Checking ${objects.length} assets` });
 
   let completed = 0;
+  let failed = 0;
   await mapLimit(objects, concurrency, async ([name, object]) => {
     const hash = object.hash;
     const prefix = hash.slice(0, 2);
-    await downloadFile(`${RESOURCES_BASE_URL}/${prefix}/${hash}`, path.join(paths.assetObjects, prefix, hash), {
-      sha1: hash,
-      size: object.size,
-      label: `asset ${name}`
-    });
+    const destination = path.join(paths.assetObjects, prefix, hash);
+
+    // Build mirror list explicitly so we can log which mirror succeeded
+    const urls = getAssetUrls ? getAssetUrls(hash) : [`${RESOURCES_BASE_URL}/${prefix}/${hash}`];
+    const [primaryUrl, ...alternativeUrls] = urls;
+
+    try {
+      await downloadFile(primaryUrl, destination, {
+        sha1: hash,
+        size: object.size,
+        label: `asset ${name}`,
+        alternativeUrls,
+        // assets are numerous and sometimes flaky – be generous with retries
+        maxRetries: 6,
+        timeoutMs: 45000
+      });
+    } catch (error) {
+      failed += 1;
+      progressBus.emitEvent('status', {
+        message: `Asset ${name} failed after all mirrors: ${error.message}`
+      });
+      // Re-throw so install fails visibly, but include helpful context
+      error.message = `Download asset ${name} failed — ${error.message}`;
+      throw error;
+    }
+
     completed += 1;
     if (completed % 25 === 0 || completed === objects.length) {
       progressBus.emitEvent('assets-progress', {
         completed,
         total: objects.length,
+        failed,
         percent: objects.length ? Math.round((completed / objects.length) * 1000) / 10 : 100
       });
     }

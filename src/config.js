@@ -6,6 +6,14 @@ const APP_VERSION = '0.2.0';
 const MOJANG_MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
 const NEWS_URL = 'https://launchercontent.mojang.com/news.json';
 const RESOURCES_BASE_URL = 'https://resources.download.minecraft.net';
+// Fallback mirrors for Minecraft assets (same /<prefix>/<hash> path structure)
+const RESOURCES_MIRRORS = [
+  'https://resources.fastmcmirror.org',
+  'https://bmclapi2.bangbang93.com/assets',
+  'https://mcm.xgheaven.com/minecraft/assets',
+  'https://launchercontent.mojang.com/assets',
+  'https://resourceproxy.pymcl.net'
+];
 
 // The Minecraft Launcher's public client is a legacy Microsoft-account app.  It
 // is registered on login.live.com, not in the Microsoft Entra "consumers"
@@ -64,12 +72,32 @@ function getDefaultSettings() {
   };
 }
 
+function getAssetUrls(hash) {
+  const prefix = String(hash).slice(0, 2);
+  const suffix = `${prefix}/${hash}`;
+  const bases = [RESOURCES_BASE_URL, ...RESOURCES_MIRRORS];
+  // Deduplicate while preserving order
+  const seen = new Set();
+  const urls = [];
+  for (const base of bases) {
+    if (!base) continue;
+    const normalized = base.replace(/\/+$/, '');
+    const url = `${normalized}/${suffix}`;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
 module.exports = {
   APP_NAME,
   APP_VERSION,
   MOJANG_MANIFEST_URL,
   NEWS_URL,
   RESOURCES_BASE_URL,
+  RESOURCES_MIRRORS,
+  getAssetUrls,
   MS_CLIENT_ID,
   MS_SCOPE,
   MS_DEVICE_CODE_URL,
