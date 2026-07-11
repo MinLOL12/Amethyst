@@ -248,7 +248,9 @@ async function completeMicrosoftAuth(msToken, remember = true) {
   }
 
   const uuid = formatUuid(profile.id);
-  const skinUrl = profile.skins?.find((s) => s.state === 'ACTIVE')?.url || '';
+  const activeSkin = profile.skins?.find((skin) => skin.state === 'ACTIVE') || profile.skins?.[0] || {};
+  const skinUrl = activeSkin.url || '';
+  const skinVariant = String(activeSkin.variant || 'classic').toLowerCase();
 
   const account = await upsertMicrosoftAccount({
     username: profile.name,
@@ -259,6 +261,7 @@ async function completeMicrosoftAuth(msToken, remember = true) {
     expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
     xuid,
     skinUrl,
+    skinVariant,
     remembered: remember
   });
 

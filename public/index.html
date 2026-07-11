@@ -87,7 +87,7 @@
 
         <section class="stat-strip" aria-label="Launcher status">
           <div class="stat-item"><span class="stat-icon violet"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 6.5 3.7v8.6L10 18l-6.5-3.7V5.7L10 2Z"/><path d="m3.5 5.7 6.5 3.7 6.5-3.7M10 9.4V18"/></svg></span><div><strong id="versions-count">—</strong><small>versions available</small></div></div>
-          <div class="stat-item"><span class="stat-icon green"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6l7-3.5Z"/><path d="m6.5 10 2.2 2.2 4.8-5"/></svg></span><div><strong id="accounts-count">—</strong><small>offline accounts</small></div></div>
+          <div class="stat-item"><span class="stat-icon green"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 17 6v8l-7 3.5L3 14V6l7-3.5Z"/><path d="m6.5 10 2.2 2.2 4.8-5"/></svg></span><div><strong id="accounts-count">—</strong><small>player accounts</small></div></div>
           <div class="stat-item"><span class="stat-icon amber"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a3 3 0 0 0-3 3v2h6v-2a3 3 0 0 0-3-3ZM5 8h10v8.5H5V8Z"/><path d="M8 12h4M10 10v4"/></svg></span><div><strong id="java-status">Scanning</strong><small>Java runtime</small></div></div>
           <div class="stat-item stat-note"><span class="live-mark"></span><div><strong>Ready when you are</strong><small>local and private by default</small></div></div>
         </section>
@@ -146,8 +146,27 @@
       </div>
 
       <div class="page" id="page-accounts">
-        <div class="page-heading"><div><span class="section-eyebrow">IDENTITY</span><h1>Accounts</h1><p>Keep your offline profiles close at hand.</p></div><button id="accounts-refresh" class="button button-quiet">↻ <span>Refresh</span></button></div>
-        <div class="accounts-layout"><section class="card accounts-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">LOCAL PROFILES</span><h2>Offline accounts</h2></div><span class="panel-count" id="account-panel-count">0</span></div><div class="account-items" id="account-list"><div class="account-empty"><div class="empty-glyph">◇</div><strong>No accounts yet</strong><p>Add a profile to launch Minecraft.</p></div></div></section><section class="card accounts-add-panel"><span class="section-eyebrow">NEW PROFILE</span><h2>Add an offline account</h2><p class="panel-copy">Create a local identity for single-player worlds and offline servers.</p><div class="info-banner"><span class="info-banner-icon">i</span><div><strong>Offline mode</strong><p>No credentials leave this machine. Online servers that require Microsoft authentication will not accept this profile.</p></div></div><label class="field-label" for="account-username">USERNAME</label><input id="account-username" placeholder="e.g. Alex" maxlength="16" autocomplete="off"><button id="account-add" class="button primary add-btn"><span>Add account</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button><div class="selected-account" id="selected-account" style="display:none"><span class="selected-label">CURRENTLY SELECTED</span><strong class="selected-name" id="selected-name">—</strong></div></section></div>
+        <div class="page-heading"><div><span class="section-eyebrow">IDENTITY</span><h1>Accounts</h1><p>Use a Microsoft account for online play and official skin changes, or keep a local offline profile.</p></div><button id="accounts-refresh" class="button button-quiet">↻ <span>Refresh</span></button></div>
+        <div class="accounts-layout">
+          <section class="card accounts-list-panel">
+            <div class="panel-heading"><div><span class="section-eyebrow">PLAYER PROFILES</span><h2>Your accounts</h2></div><span class="panel-count" id="account-panel-count">0</span></div>
+            <div class="account-items" id="account-list"><div class="account-empty"><div class="empty-glyph">◇</div><strong>No accounts yet</strong><p>Add a profile to launch Minecraft.</p></div></div>
+          </section>
+          <section class="card accounts-add-panel">
+            <span class="section-eyebrow">MICROSOFT ACCOUNT</span>
+            <h2>Play online &amp; change skins</h2>
+            <p class="panel-copy">Sign in with Microsoft's device-code flow. Amethyst never asks for your password.</p>
+            <button id="account-microsoft" class="button primary add-btn"><span>Sign in with Microsoft</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5.5v5.5H2zM8.5 2H14v5.5H8.5zM2 8.5h5.5V14H2zM8.5 8.5H14V14H8.5z"/></svg></button>
+            <div class="account-method-divider"><span>OR USE OFFLINE MODE</span></div>
+            <h2>Add an offline account</h2>
+            <p class="panel-copy">Create a local identity for single-player worlds and offline servers.</p>
+            <div class="info-banner"><span class="info-banner-icon">i</span><div><strong>Offline mode</strong><p>Offline profiles cannot publish skins or join authenticated online servers.</p></div></div>
+            <label class="field-label" for="account-username">USERNAME</label>
+            <input id="account-username" placeholder="e.g. Alex" maxlength="16" autocomplete="off">
+            <button id="account-add" class="button button-subtle add-btn"><span>Add offline account</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+            <div class="selected-account" id="selected-account" style="display:none"><span class="selected-label">CURRENTLY SELECTED</span><strong class="selected-name" id="selected-name">—</strong></div>
+          </section>
+        </div>
       </div>
 
       <div class="page" id="page-settings">
@@ -180,6 +199,50 @@
       <div class="modal-actions" style="gap:8px"><button id="mp-new-cancel" class="button button-quiet">Cancel</button><button id="mp-new-create" class="button primary">Create</button></div>
     </div>
   </div>
+
+  <div class="modal-overlay" id="microsoft-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="microsoft-modal-title">
+    <div class="modal microsoft-modal">
+      <div class="modal-header"><div class="modal-icon"><span>▦</span></div><div><span class="modal-title" id="microsoft-modal-title">Sign in with Microsoft</span><span class="modal-version">Secure device-code login</span></div><button id="microsoft-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="modal-body microsoft-login-body">
+        <p id="microsoft-login-message">Requesting a sign-in code…</p>
+        <button id="microsoft-user-code" class="device-code" type="button" title="Copy code">••••••••</button>
+        <a id="microsoft-login-link" class="button primary" href="https://www.microsoft.com/link" target="_blank" rel="noreferrer">Open Microsoft sign-in</a>
+        <span class="field-hint">Enter the code on Microsoft's page. Never enter your password in Amethyst.</span>
+        <span class="skin-status" id="microsoft-login-status">Waiting for Microsoft…</span>
+      </div>
+      <div class="modal-actions"><button id="microsoft-login-cancel" class="button button-subtle">Cancel</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="skin-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="skin-modal-title">
+    <div class="modal skin-modal">
+      <div class="modal-header"><div class="modal-icon"><span>◩</span></div><div><span class="modal-title" id="skin-modal-title">Skin changer</span><span class="modal-version" id="skin-account-name">Microsoft account</span></div><button id="skin-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="skin-manager">
+        <div class="skin-preview-panel">
+          <div class="skin-canvas-wrap"><canvas id="skin-preview" width="128" height="256" aria-label="Minecraft skin preview"></canvas><span id="skin-preview-empty">Choose a skin to preview</span></div>
+          <div class="skin-preview-meta"><strong id="skin-preview-size">No skin selected</strong><span id="skin-preview-source">64×64 or legacy 64×32 PNG</span></div>
+        </div>
+        <div class="skin-controls">
+          <div><span class="section-eyebrow">IMPORT A SKIN</span><h2>Choose your new look</h2><p class="panel-copy">Upload a PNG downloaded from any skin site, paste a direct HTTPS PNG link, or paste a NameMC / Skindex skin page URL.</p></div>
+          <input id="skin-file" type="file" accept="image/png,.png" hidden>
+          <button id="skin-file-button" class="button button-subtle" type="button">Choose PNG file</button>
+          <label class="field-label" for="skin-url">SKIN OR DIRECT PNG URL</label>
+          <div class="skin-url-row"><input id="skin-url" type="url" placeholder="NameMC, Skindex, or direct PNG URL" autocomplete="off"><button id="skin-url-preview" class="button button-quiet" type="button">Preview</button></div>
+          <label class="field-label" for="skin-variant">PLAYER MODEL</label>
+          <select id="skin-variant"><option value="classic">Classic · 4 px arms</option><option value="slim">Slim · 3 px arms</option></select>
+          <div class="skin-provider-list" aria-label="Supported skin websites">
+            <a href="https://namemc.com/minecraft-skins" target="_blank" rel="noreferrer">NameMC</a>
+            <a href="https://www.minecraftskins.com/" target="_blank" rel="noreferrer">The Skindex</a>
+            <a href="https://www.planetminecraft.com/skins/" target="_blank" rel="noreferrer">Planet Minecraft</a>
+            <a href="https://minecraft.novaskin.me/gallery" target="_blank" rel="noreferrer">Nova Skin</a>
+          </div>
+          <span class="skin-status" id="skin-status">Skin changes are sent only to the official Minecraft profile service.</span>
+        </div>
+      </div>
+      <div class="modal-actions skin-modal-actions"><button id="skin-cancel" class="button button-subtle">Cancel</button><button id="skin-apply" class="button primary" disabled>Apply skin</button></div>
+    </div>
+  </div>
+
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
   <pre id="log" class="log-hidden"></pre>
   <script src="/app.js"></script>
