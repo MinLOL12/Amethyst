@@ -171,6 +171,17 @@ async function downloadFile(url, destination, options = {}) {
     });
 
     await pipeline(response.body.pipeThrough(counter), writable);
+
+    // Verify the file actually exists on disk after pipeline completes.
+    // Under some conditions (empty web stream, premature close, Windows file
+    // flush ordering) the writable may resolve without creating the file.
+    let fileStat;
+    try { fileStat = await fsp.stat(temp); } catch (_) { fileStat = null; }
+    if (!fileStat || !fileStat.isFile() || fileStat.size === 0) {
+      if (fileStat) await fsp.rm(temp, { force: true });
+      throw new Error(`Download ${label} produced no data — the server returned an empty response`);
+    }
+
     return { received: receivedBytes, total: totalBytes };
   }, { label, maxRetries: options.maxRetries, timeoutMs: options.timeoutMs });
 
