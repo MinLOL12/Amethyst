@@ -32,6 +32,21 @@ Download the correct installer for your system from [GitHub Releases](https://gi
 Portable (no-install) versions are also available for both architectures.
 
 > If you see "This app can't run on your PC," make sure you downloaded the correct architecture for your device. Check your system type under **Settings → System → About → Device specifications → System type**.
+## Install on Linux
+
+Download the correct package from [GitHub Releases](https://github.com/MinLOL12/Amethyst/releases):
+
+- **AppImage**: Download the  file, make it executable (), and run it.
+- **Debian (.deb)**: Download the  file and install it using your package manager (e.g., Reading package lists...).
+
+## Install on macOS
+
+Download the  file from [GitHub Releases](https://github.com/MinLOL12/Amethyst/releases):
+
+1. Open the  file.
+2. Drag the Amethyst Launcher icon into your **Applications** folder.
+3. To open the app for the first time, you may need to right-click the app and select **Open**, or go to **System Settings → Privacy & Security** and click **Open Anyway**, as the build is currently unsigned.
+
 ## Run from source
 
 Contributors need Node.js 22.12 or newer:
