@@ -1,6 +1,7 @@
 # Amethyst <img src="https://raw.githubusercontent.com/MinLOL12/Amethyst/main/build/icon.png" width="30">
 
 [![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/MinLOL12/Amethyst) ![Coverage](https://img.shields.io/badge/coolometer-100%25-orange)
+###### The main branch may be outdated at points.
 
 Amethyst is a dark-purple Minecraft launcher built with Node.js and a
 **polished zero-build web UI**. The launcher runs locally, serves plain HTML,
