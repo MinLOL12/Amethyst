@@ -28,7 +28,10 @@ const state = {
   loaderRequestId: 0,
   gameRunning: false,
   gameLoading: false,
+  startupLogCount: 0,
   runtimeMemoryLimit: 2048 * 1024 * 1024,
+  themes: [],
+  activeThemeId: 'amethyst',
   onlineWasOnline: false,
   pendingRefresh: false,
   lastFetchError: null,
@@ -351,11 +354,37 @@ function syncSelectedLoaderVersion(version) {
 }
 
 // Settings
-const defaultTheme = { name: 'Amethyst', background: '#0b0912', panel: '#171223', accent: '#a879ff', accentBright: '#c6a8ff', text: '#f7f4ff' };
+const defaultTheme = { id: 'amethyst', name: 'Amethyst', background: '#0b0912', panel: '#171223', accent: '#a879ff', accentBright: '#c6a8ff', text: '#f7f4ff' };
 
-function themeFromForm() {
+function makeThemeId(name = 'theme') {
+  const slug = String(name).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 28) || 'theme';
+  return `${slug}-${Date.now().toString(36)}`;
+}
+
+function normalizeTheme(theme = {}) {
+  return { ...defaultTheme, ...theme, id: theme.id || defaultTheme.id };
+}
+
+function themeCollection(settings = state.settings || {}) {
+  const themes = Array.isArray(settings.themes) && settings.themes.length
+    ? settings.themes.map(normalizeTheme)
+    : [normalizeTheme(settings.theme)];
+  const ids = new Set();
+  return themes.filter((theme) => {
+    if (ids.has(theme.id)) return false;
+    ids.add(theme.id);
+    return true;
+  });
+}
+
+function currentThemeId() {
+  return $('#settings-theme-select')?.value || state.activeThemeId || defaultTheme.id;
+}
+
+function themeFromForm(id = currentThemeId()) {
   return {
-    name: $('#settings-theme-name')?.value.trim() || 'Custom',
+    id,
+    name: $('#settings-theme-name')?.value.trim() || 'Custom theme',
     background: $('#settings-theme-background')?.value || defaultTheme.background,
     panel: $('#settings-theme-panel')?.value || defaultTheme.panel,
     accent: $('#settings-theme-accent')?.value || defaultTheme.accent,
@@ -365,7 +394,7 @@ function themeFromForm() {
 }
 
 function populateThemeForm(theme = defaultTheme) {
-  const value = { ...defaultTheme, ...theme };
+  const value = normalizeTheme(theme);
   $('#settings-theme-name').value = value.name;
   $('#settings-theme-background').value = value.background;
   $('#settings-theme-panel').value = value.panel;
@@ -374,8 +403,27 @@ function populateThemeForm(theme = defaultTheme) {
   $('#settings-theme-text').value = value.text;
 }
 
+function renderThemeSelect() {
+  const select = $('#settings-theme-select');
+  if (!select) return;
+  select.innerHTML = '';
+  for (const theme of state.themes) {
+    const option = document.createElement('option');
+    option.value = theme.id;
+    option.textContent = theme.name;
+    select.append(option);
+  }
+  select.value = state.activeThemeId;
+  if (select.value !== state.activeThemeId) {
+    state.activeThemeId = state.themes[0]?.id || defaultTheme.id;
+    select.value = state.activeThemeId;
+  }
+  const deleteButton = $('#settings-theme-delete');
+  if (deleteButton) deleteButton.disabled = state.themes.length < 2;
+}
+
 function applyTheme(theme = defaultTheme) {
-  const value = { ...defaultTheme, ...theme };
+  const value = normalizeTheme(theme);
   const root = document.documentElement.style;
   root.setProperty('--bg', value.background);
   root.setProperty('--panel-solid', value.panel);
@@ -387,6 +435,61 @@ function applyTheme(theme = defaultTheme) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value.background);
 }
 
+function commitThemeForm(id = currentThemeId()) {
+  const theme = themeFromForm(id);
+  const index = state.themes.findIndex((entry) => entry.id === id);
+  if (index >= 0) state.themes[index] = theme;
+  else state.themes.push(theme);
+  state.activeThemeId = theme.id;
+  state.settings = {
+    ...(state.settings || {}),
+    theme,
+    themes: state.themes,
+    activeThemeId: state.activeThemeId
+  };
+  return theme;
+}
+
+function selectTheme(id) {
+  // A native <select> has already changed its value by the time `change`
+  // fires, so save the form under the previously active id explicitly.
+  commitThemeForm(state.activeThemeId || currentThemeId());
+  const theme = state.themes.find((entry) => entry.id === id) || state.themes[0] || defaultTheme;
+  state.activeThemeId = theme.id;
+  populateThemeForm(theme);
+  renderThemeSelect();
+  applyTheme(theme);
+}
+
+function createTheme() {
+  commitThemeForm();
+  const theme = { ...defaultTheme, id: makeThemeId('custom-theme'), name: 'Custom theme' };
+  state.themes.push(theme);
+  state.activeThemeId = theme.id;
+  populateThemeForm(theme);
+  renderThemeSelect();
+  applyTheme(theme);
+  $('#settings-theme-name')?.focus();
+}
+
+function interpolatePresence(template, context) {
+  return String(template || '').replace(/\{(version|loader|player)\}/g, (_, key) => context[key] || '—');
+}
+
+function updateDiscordPreview(status = '') {
+  const preview = $('#settings-discord-preview');
+  if (!preview) return;
+  const account = state.accounts.find((item) => item.id === state.settings?.lastAccountId) || state.accounts[0];
+  const context = {
+    version: $('#ql-version')?.value || state.settings?.lastVersion || 'Minecraft',
+    loader: selectedLoaderType() === 'vanilla' ? 'Vanilla' : selectedLoaderType(),
+    player: account?.username || 'Player'
+  };
+  const details = interpolatePresence($('#settings-discord-details')?.value || 'Playing Minecraft {version}', context);
+  const presenceState = interpolatePresence($('#settings-discord-state')?.value || 'via {loader} · {player}', context);
+  preview.textContent = status || `Preview: ${details} — ${presenceState}`;
+}
+
 function populateDiscordSettings(settings) {
   $('#settings-discord-enabled').checked = Boolean(settings.discordEnabled);
   $('#settings-discord-client-id').value = settings.discordClientId || '';
@@ -395,16 +498,22 @@ function populateDiscordSettings(settings) {
   $('#settings-discord-image-key').value = settings.discordLargeImageKey || '';
   $('#settings-discord-image-text').value = settings.discordLargeImageText || 'Amethyst Launcher';
   $('#settings-discord-elapsed').checked = settings.discordShowElapsed !== false;
+  updateDiscordPreview(settings.discordEnabled ? 'Discord RPC will connect when Minecraft is running.' : 'Discord RPC is disabled.');
 }
 
 async function loadSettings() {
   const { settings } = await api('/api/settings');
   state.settings = settings;
+  state.themes = themeCollection(settings);
+  state.activeThemeId = state.themes.some((theme) => theme.id === settings.activeThemeId)
+    ? settings.activeThemeId
+    : state.themes[0].id;
   state.runtimeMemoryLimit = (Number(settings.memoryMb) || 2048) * 1024 * 1024;
   syncMemorySliders(settings.memoryMb);
   populateDiscordSettings(settings);
-  populateThemeForm(settings.theme);
-  applyTheme(settings.theme);
+  populateThemeForm(state.themes.find((theme) => theme.id === state.activeThemeId));
+  renderThemeSelect();
+  applyTheme(state.themes.find((theme) => theme.id === state.activeThemeId));
   $('#settings-java-path').value = settings.javaPath || '';
   if (settings.lastVersion && $('#ql-version')) $('#ql-version').value = settings.lastVersion;
   await selectLoader(settings.loaderType || 'vanilla', settings.loaderVersion || '');
@@ -415,6 +524,7 @@ async function loadSettings() {
 }
 
 async function saveSettings(extra = {}) {
+  const activeTheme = commitThemeForm();
   const body = {
     ...state.settings,
     memoryMb: memoryValue(),
@@ -430,14 +540,26 @@ async function saveSettings(extra = {}) {
     discordLargeImageKey: $('#settings-discord-image-key')?.value.trim() || '',
     discordLargeImageText: $('#settings-discord-image-text')?.value.trim() || 'Amethyst Launcher',
     discordShowElapsed: $('#settings-discord-elapsed')?.checked !== false,
-    theme: themeFromForm(),
+    theme: activeTheme,
+    themes: state.themes,
+    activeThemeId: state.activeThemeId,
     ...extra,
   };
-  const { settings } = await api('/api/settings', { method: 'POST', body });
+  const response = await api('/api/settings', { method: 'POST', body });
+  const { settings } = response;
   state.settings = settings;
+  state.themes = themeCollection(settings);
+  state.activeThemeId = settings.activeThemeId || state.themes[0].id;
   state.runtimeMemoryLimit = settings.memoryMb * 1024 * 1024;
   syncMemorySliders(settings.memoryMb);
+  renderThemeSelect();
   applyTheme(settings.theme);
+  const discordStatus = response.discord?.connected
+    ? 'Discord RPC is connected for this Minecraft session.'
+    : (settings.discordEnabled
+      ? (response.discord?.reason === 'missing-client-id' ? 'Add a Discord Application ID to connect.' : 'Discord RPC will connect when Minecraft is running.')
+      : 'Discord RPC is disabled.');
+  updateDiscordPreview(discordStatus);
   log('Settings saved.');
   return settings;
 }
@@ -448,6 +570,7 @@ async function loadAccounts() {
   state.accounts = accounts;
   renderAccounts();
   updateSelectedAccount();
+  updateDiscordPreview();
   const count = $('#accounts-count');
   const panelCount = $('#account-panel-count');
   if (count) count.textContent = accounts.length;
@@ -1498,15 +1621,27 @@ function formatElapsed(milliseconds = 0) {
   return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
 }
 
+function resetRuntimeMetrics() {
+  $('#runtime-cpu').textContent = '0.0%';
+  $('#runtime-ram').textContent = '0 MB';
+  $('#runtime-pid').textContent = 'Starting…';
+  $('#runtime-elapsed').textContent = '00:00:00';
+  $('#runtime-cpu-bar').style.width = '0%';
+  $('#runtime-ram-bar').style.width = '0%';
+}
+
 function showRuntimeLoading(versionId = '') {
   state.gameLoading = true;
   state.gameRunning = false;
+  state.startupLogCount = 0;
   $('#runtime-card').hidden = false;
   $('#runtime-title').textContent = `Loading Minecraft${versionId ? ` ${versionId}` : ''}…`;
+  $('#runtime-detail').textContent = 'Java started. Waiting for Minecraft to finish loading…';
   $('#runtime-state').className = 'runtime-state loading';
   $('#runtime-state').innerHTML = '<i></i><span>Starting</span>';
   $('#game-console-wrap').hidden = true;
   $('#game-console').textContent = '';
+  resetRuntimeMetrics();
 }
 
 function showRuntimeReady(event) {
@@ -1514,6 +1649,9 @@ function showRuntimeReady(event) {
   state.gameRunning = true;
   $('#runtime-card').hidden = false;
   $('#runtime-title').textContent = `Minecraft ${event.baseVersionId || event.versionId || ''} is running`;
+  $('#runtime-detail').textContent = state.startupLogCount
+    ? `Session is live. ${state.startupLogCount} startup log${state.startupLogCount === 1 ? '' : 's'} captured below.`
+    : 'Session is live. Game logs will appear below.';
   $('#runtime-state').className = 'runtime-state';
   $('#runtime-state').innerHTML = '<i></i><span>Live</span>';
   $('#runtime-pid').textContent = event.pid ? `PID ${event.pid}` : 'Running';
@@ -1536,6 +1674,7 @@ function stopRuntimeUi(message) {
   state.gameLoading = false;
   state.gameRunning = false;
   $('#runtime-title').textContent = message;
+  $('#runtime-detail').textContent = 'The most recent game output remains available below.';
   $('#runtime-state').className = 'runtime-state stopped';
   $('#runtime-state').innerHTML = '<i></i><span>Stopped</span>';
   // If the game crashed, show a "View crash report" button on the runtime card
@@ -1940,11 +2079,19 @@ function connectEvents() {
         break;
       case 'resource-usage': updateResourceUsage(event); break;
       case 'discord-rpc':
-        if (event.message) log(`Discord RPC: ${event.message}`, 'error');
+        if (event.connected) updateDiscordPreview('Discord RPC is connected for this Minecraft session.');
+        else if (event.message) {
+          updateDiscordPreview(`Discord RPC: ${event.message}`);
+          log(`Discord RPC: ${event.message}`, 'error');
+        }
         break;
       case 'game-log':
         log((event.message || '').trim());
         appendGameConsole(event.message || '', event.stream);
+        if (state.gameLoading) {
+          state.startupLogCount += 1;
+          $('#runtime-detail').textContent = `Minecraft is starting… captured ${state.startupLogCount} startup log${state.startupLogCount === 1 ? '' : 's'}.`;
+        }
         break;
       case 'launch-error':
         stopRuntimeUi('Minecraft failed to start');
@@ -2106,11 +2253,13 @@ function bindUi() {
   $('#ql-version')?.addEventListener('change', (event) => {
     $('#ql-launch').disabled = !event.target.value || state.downloadActive;
     state.selectedVersionId = event.target.value || state.selectedVersionId;
+    updateDiscordPreview();
     refreshLoaderVersions().catch(reportError);
   });
   for (const selector of loaderTypeSelectors) {
     $(selector)?.addEventListener('change', async (event) => {
       await selectLoader(event.target.value);
+      updateDiscordPreview();
       // Re-evaluate the install/play button with the new loader context
       if (state.selectedVersionId) updateDetailInstallButton(state.selectedVersionId);
     });
@@ -2209,9 +2358,28 @@ function bindUi() {
 
   $('#settings-save')?.addEventListener('click', () => saveSettings().then(() => notify('Settings saved.')).catch(reportError));
   $('#settings-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
+  $('#settings-theme-select')?.addEventListener('change', (event) => selectTheme(event.target.value));
+  $('#settings-theme-new')?.addEventListener('click', () => createTheme());
+  $('#settings-theme-delete')?.addEventListener('click', async () => {
+    if (state.themes.length < 2) { notify('Keep at least one saved theme.', 'error'); return; }
+    const id = currentThemeId();
+    state.themes = state.themes.filter((theme) => theme.id !== id);
+    state.activeThemeId = state.themes[0].id;
+    populateThemeForm(state.themes[0]);
+    renderThemeSelect();
+    applyTheme(state.themes[0]);
+    await saveSettings();
+    notify('Theme deleted.');
+  });
   $('#settings-theme-preview')?.addEventListener('click', () => { applyTheme(themeFromForm()); notify('Theme preview applied. Save to keep it.'); });
-  $('#settings-theme-reset')?.addEventListener('click', () => { populateThemeForm(defaultTheme); applyTheme(defaultTheme); });
+  $('#settings-theme-save')?.addEventListener('click', () => saveSettings().then(() => notify('Theme saved.')).catch(reportError));
+  $('#settings-theme-reset')?.addEventListener('click', () => { populateThemeForm(defaultTheme); applyTheme(defaultTheme); notify('Amethyst colours restored. Save to keep them.'); });
+  $('#settings-theme-name')?.addEventListener('input', () => applyTheme(themeFromForm()));
   $$('.theme-colors input[type="color"]').forEach(input => input.addEventListener('input', () => applyTheme(themeFromForm())));
+  ['#settings-discord-enabled', '#settings-discord-client-id', '#settings-discord-details', '#settings-discord-state', '#settings-discord-image-key', '#settings-discord-image-text', '#settings-discord-elapsed'].forEach((selector) => {
+    $(selector)?.addEventListener('input', () => updateDiscordPreview());
+    $(selector)?.addEventListener('change', () => updateDiscordPreview());
+  });
   $('#console-clear')?.addEventListener('click', () => { $('#game-console').textContent = ''; });
   $('#settings-change-dir')?.addEventListener('click', () => showDriveModal());
   $('#drive-cancel')?.addEventListener('click', hideDriveModal);

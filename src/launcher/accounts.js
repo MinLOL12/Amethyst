@@ -187,16 +187,52 @@ async function removeAccount(accountId) {
   return next.map(publicAccount);
 }
 
-async function readSettings() {
-  const defaults = getDefaultSettings();
-  const current = await readJson(paths().settings, defaults);
-  return { ...defaults, ...current };
+const MAX_SAVED_THEMES = 24;
+
+function themeId(value, index = 0) {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 36);
+  return normalized || `theme-${index + 1}`;
 }
 
-async function saveSettings(partial) {
-  const defaults = getDefaultSettings();
-  const current = await readJson(paths().settings, defaults);
-  const next = { ...defaults, ...current, ...partial };
+function normalizeTheme(input, fallback, index = 0) {
+  const source = input && typeof input === 'object' ? input : {};
+  const color = (value, fallbackValue) => /^#[0-9a-f]{6}$/i.test(String(value || ''))
+    ? String(value).toLowerCase()
+    : fallbackValue;
+  return {
+    id: themeId(source.id || source.name, index),
+    name: String(source.name || fallback.name).trim().slice(0, 32) || fallback.name,
+    background: color(source.background, fallback.background),
+    panel: color(source.panel, fallback.panel),
+    accent: color(source.accent, fallback.accent),
+    accentBright: color(source.accentBright, fallback.accentBright),
+    text: color(source.text, fallback.text)
+  };
+}
+
+function normalizeThemes(input, fallback) {
+  const candidates = Array.isArray(input) ? input : [input];
+  const usedIds = new Set();
+  const themes = [];
+
+  for (const [index, item] of candidates.entries()) {
+    if (!item || typeof item !== 'object' || themes.length >= MAX_SAVED_THEMES) continue;
+    const theme = normalizeTheme(item, fallback, index);
+    const baseId = theme.id;
+    let suffix = 2;
+    while (usedIds.has(theme.id)) theme.id = `${baseId.slice(0, 32)}-${suffix++}`;
+    usedIds.add(theme.id);
+    themes.push(theme);
+  }
+
+  return themes.length ? themes : [normalizeTheme(fallback, fallback)];
+}
+
+function normalizeSettings(next, defaults, { hasThemeCollection = false } = {}) {
   next.memoryMb = Math.min(16384, Math.max(512, Number(next.memoryMb) || defaults.memoryMb));
   next.resolutionWidth = Math.min(7680, Math.max(640, Number(next.resolutionWidth) || defaults.resolutionWidth));
   next.resolutionHeight = Math.min(4320, Math.max(480, Number(next.resolutionHeight) || defaults.resolutionHeight));
@@ -210,16 +246,16 @@ async function saveSettings(partial) {
   next.discordLargeImageKey = String(next.discordLargeImageKey || '').trim().slice(0, 64);
   next.discordLargeImageText = String(next.discordLargeImageText || defaults.discordLargeImageText).slice(0, 128);
   next.discordShowElapsed = next.discordShowElapsed !== false;
-  const inputTheme = next.theme && typeof next.theme === 'object' ? next.theme : {};
-  const color = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
-  next.theme = {
-    name: String(inputTheme.name || defaults.theme.name).trim().slice(0, 32),
-    background: color(inputTheme.background, defaults.theme.background),
-    panel: color(inputTheme.panel, defaults.theme.panel),
-    accent: color(inputTheme.accent, defaults.theme.accent),
-    accentBright: color(inputTheme.accentBright, defaults.theme.accentBright),
-    text: color(inputTheme.text, defaults.theme.text)
-  };
+
+  // A single `theme` was used before collections existed. Prefer it whenever
+  // an older settings file does not contain `themes`, so users keep their
+  // existing colours after upgrading.
+  next.themes = normalizeThemes(hasThemeCollection ? next.themes : next.theme, defaults.theme);
+  const requestedThemeId = themeId(next.activeThemeId || next.theme?.id || next.themes[0].id);
+  const active = next.themes.find((theme) => theme.id === requestedThemeId) || next.themes[0];
+  next.activeThemeId = active.id;
+  next.theme = { ...active };
+
   next.jvmArgs = String(next.jvmArgs || '');
   next.launchArgs = String(next.launchArgs || '');
   const loaderType = String(next.loaderType || 'vanilla').toLowerCase();
@@ -227,6 +263,33 @@ async function saveSettings(partial) {
     ? loaderType
     : 'vanilla';
   next.loaderVersion = next.loaderType === 'vanilla' ? '' : String(next.loaderVersion || '');
+  return next;
+}
+
+async function readSettings() {
+  const defaults = getDefaultSettings();
+  const current = await readJson(paths().settings, defaults);
+  return normalizeSettings(
+    { ...defaults, ...current },
+    defaults,
+    { hasThemeCollection: Array.isArray(current.themes) }
+  );
+}
+
+async function saveSettings(partial) {
+  const defaults = getDefaultSettings();
+  const current = await readJson(paths().settings, defaults);
+  const hasIncomingThemes = Object.prototype.hasOwnProperty.call(partial || {}, 'themes');
+  const hasIncomingLegacyTheme = Object.prototype.hasOwnProperty.call(partial || {}, 'theme');
+  const next = normalizeSettings(
+    { ...defaults, ...current, ...partial },
+    defaults,
+    {
+      // An old client that only posts `theme` can still update the active
+      // theme, while modern clients retain their whole collection.
+      hasThemeCollection: hasIncomingThemes || (!hasIncomingLegacyTheme && Array.isArray(current.themes))
+    }
+  );
   await writeJson(paths().settings, next);
   return next;
 }

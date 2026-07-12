@@ -71,7 +71,11 @@ function getDefaultSettings() {
     discordLargeImageKey: '',
     discordLargeImageText: 'Amethyst Launcher',
     discordShowElapsed: true,
+    // `theme` remains the active theme for compatibility with settings files
+    // written by earlier Amethyst releases. `themes` keeps a reusable local
+    // collection and `activeThemeId` selects the one applied on startup.
     theme: {
+      id: 'amethyst',
       name: 'Amethyst',
       background: '#0b0912',
       panel: '#171223',
@@ -79,6 +83,18 @@ function getDefaultSettings() {
       accentBright: '#c6a8ff',
       text: '#f7f4ff'
     },
+    themes: [
+      {
+        id: 'amethyst',
+        name: 'Amethyst',
+        background: '#0b0912',
+        panel: '#171223',
+        accent: '#a879ff',
+        accentBright: '#c6a8ff',
+        text: '#f7f4ff'
+      }
+    ],
+    activeThemeId: 'amethyst',
     // Quick Launch uses these to remember the selected runtime. Vanilla is
     // represented explicitly so an old settings file cannot accidentally
     // reuse a stale loader version.
