@@ -1561,17 +1561,38 @@ async function loadCompatibleVersions(projectId, projectType) {
   return api(`/api/modrinth/project/${encodeURIComponent(projectId)}/versions?${params.toString()}`);
 }
 
+function countExternalRequiredDependencies(ver, hit) {
+  // Only count required deps that are different projects from the mod itself.
+  // Modrinth sometimes lists the base/parent project (or the same project) as a
+  // required dependency even when the mod runs standalone — that is not an
+  // "auto-install" dependency from the user's perspective.
+  const selfIds = new Set(
+    [hit?.project_id, hit?.slug, ver?.project_id]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase())
+  );
+  return (ver.dependencies || []).filter((dep) => {
+    if (dep.dependency_type !== 'required') return false;
+    const depProject = dep.project_id ? String(dep.project_id).toLowerCase() : '';
+    if (depProject && selfIds.has(depProject)) return false;
+    // version-only deps with no project_id still count as external
+    return true;
+  }).length;
+}
+
 function renderModrinthVersionRow(hit, ver, projectType, list) {
   const file = ver.files?.find(f => f.primary) || ver.files?.[0];
   if (!file) return;
   const row = document.createElement('div');
   row.className = 'mod-ver';
-  const required = (ver.dependencies || []).filter(dep => dep.dependency_type === 'required').length;
+  // Only show the auto-install note when there is a real *external* dependency
+  // (not the mod listing itself / its base project as a required dep).
+  const required = projectType === 'mod' ? countExternalRequiredDependencies(ver, hit) : 0;
   let label = 'Install';
   if (projectType === 'modpack') label = 'Install pack';
   if (projectType === 'shader') label = 'Install shader';
   if (projectType === 'resourcepack') label = 'Install resource pack';
-  row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name || '')}</div><div class="muted" style="font-size:.6rem">${escapeHtml((ver.loaders || []).join(', ') || 'any loader')} · ${escapeHtml((ver.game_versions || []).join(', ').slice(0, 90))} · ${formatBytes(file.size || 0)}</div>${required ? `<div class="mod-dependency-note">${required} required dependenc${required === 1 ? 'y' : 'ies'} will auto-install</div>` : ''}</div><button class="button primary" style="min-height:28px; font-size:.68rem">${label}</button>`;
+  row.innerHTML = `<div class="mod-ver-info"><div class="mod-ver-name" title="${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name || '')}">${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name || '')}</div><div class="muted" style="font-size:.6rem">${escapeHtml((ver.loaders || []).join(', ') || 'any loader')} · ${escapeHtml((ver.game_versions || []).join(', ').slice(0, 90))} · ${formatBytes(file.size || 0)}</div>${required ? `<div class="mod-dependency-note">${required} required dependenc${required === 1 ? 'y' : 'ies'} will auto-install</div>` : ''}</div><button class="button primary" style="min-height:28px; font-size:.68rem">${label}</button>`;
   row.querySelector('button').addEventListener('click', async (event) => {
     if (projectType === 'mod') {
       const mpId = state.selectedModpackId;
@@ -2484,6 +2505,26 @@ function bindUi() {
     try { const body = selectedPayload(); await api(`/api/modpacks/${encodeURIComponent(state.selectedModpackId)}/launch`, { method:'POST', body }); } catch (e) { reportError(e); }
   });
   $('#mp-add-jar')?.addEventListener('click', () => addJarToSelectedPack());
+  $('#mp-export')?.addEventListener('click', async () => {
+    if (!state.selectedModpackId) return;
+    const mp = selectedModpack();
+    const custom = prompt(
+      'Optional: full path for the .mrpack export (leave blank for the default exports folder):',
+      ''
+    );
+    if (custom === null) return;
+    try {
+      const body = custom.trim() ? { destination: custom.trim() } : {};
+      const result = await api(`/api/modpacks/${encodeURIComponent(state.selectedModpackId)}/export`, {
+        method: 'POST',
+        body
+      });
+      notify(`Exported ${result.name || mp?.name || 'modpack'} to ${result.destination}`);
+      log(`Exported modpack to ${result.destination} (${result.files || 0} remote files, ${result.overrides || 0} overrides)`);
+    } catch (e) {
+      reportError(e);
+    }
+  });
   $('#mp-delete')?.addEventListener('click', async () => {
     if (!state.selectedModpackId) return;
     if (!confirm('Delete this modpack? This will remove all files.')) return;

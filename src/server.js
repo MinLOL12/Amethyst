@@ -681,6 +681,15 @@ async function handleApi(request, response, url) {
     return json(response, 201, { modpack });
   }
 
+  const modpackExport = matchRoute(url.pathname, '/api/modpacks/:id/export');
+  if (method === 'POST' && modpackExport) {
+    const body = await readBody(request).catch(() => ({}));
+    const result = await runExclusive(`Export modpack ${modpackExport.id}`, () =>
+      modpacks.exportModpack(modpackExport.id, body.destination)
+    );
+    return json(response, 200, { ok: true, ...result });
+  }
+
   const modpackOne = matchRoute(url.pathname, '/api/modpacks/:id');
   if (modpackOne) {
     if (method === 'GET') return json(response, 200, { modpack: await modpacks.getModpack(modpackOne.id) });
