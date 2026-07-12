@@ -29,3 +29,8 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+# Windows-specific build settings to ensure compatibility with Windows 10+ (including Windows 11)
+# The windows_subsystem = "windows" attribute in main.rs hides the console window;
+# Tauri/tauri-build automatically embeds a modern compatibility manifest.
+[target.'cfg(target_os = "windows")'.dependencies]
