@@ -313,8 +313,10 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 9px; backgro
 #mp-browse-results .mod-item { display:flex; gap:12px; padding:14px; border:1px solid var(--line); border-radius:12px; background: rgba(255,255,255,.03); }
 #mp-browse-results .mod-item img { width:40px; height:40px; border-radius:8px; object-fit:cover; background: var(--panel-raised); }
 #mp-mods-list .mod-installed { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background: rgba(255,255,255,.03); }
-.mod-ver { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background: rgba(255,255,255,.04); margin-top:6px; }
-.mod-ver-name { font-family: monospace; font-size:.7rem; }
+.mod-ver { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background: rgba(255,255,255,.04); margin-top:6px; min-width:0; }
+.mod-ver-info { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.mod-ver .button { flex: 0 0 auto; white-space: nowrap; }
+.mod-ver-name { font-family: monospace; font-size:.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 7px; height: 7px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 10px; background: rgba(255,255,255,.13); background-clip: padding-box; } ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.24); background-clip: padding-box; }
@@ -370,7 +372,10 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 9px; backgro
 .mod-browser-results .mod-item { display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.03); }
 .mod-browser-results .mod-item-icon { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; background: var(--panel-raised); }
 .mod-browser-results .mod-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.mod-browser-results .mod-item-title { color: var(--ink); font-size: .9rem; font-weight: 720; }
+.mod-browser-results .mod-item-title { color: var(--ink); font-size: .9rem; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-browser-results .mod-item-body { min-width: 0; }
+.mod-browser-results .mod-item-head > div:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.mod-browser-results .mod-item-head .button { flex: 0 0 auto; }
 .mod-browser-results .mod-item-meta { margin-top: 5px; color: var(--ink-muted); font-size: .64rem; line-height: 1.45; }
 .mod-browser-results .mod-item-summary { margin-top: 7px; color: var(--ink-soft); font-size: .72rem; line-height: 1.5; }
 .mod-project-details { grid-column: 1 / -1; display: none; flex-direction: column; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(8,6,14,.28); }

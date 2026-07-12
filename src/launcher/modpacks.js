@@ -460,7 +460,20 @@ async function addModToPack(id, modInfo, context = {}){
 async function installRequiredModrinthDependencies(id, modInfo, seen){
   const modrinth=require('./modrinth');
   const version=await modrinth.getVersion(modInfo.versionId);
-  const deps=(version.dependencies||[]).filter(dep=>dep.dependency_type === 'required');
+  // Skip self/base-project dependencies. Some Modrinth projects list their own
+  // project (or a "base" variant of the same project) as required even though
+  // the selected version already is the installable mod.
+  const selfIds=new Set(
+    [modInfo.projectId, modInfo.projectSlug, version.project_id]
+      .filter(Boolean)
+      .map((value)=>String(value).toLowerCase())
+  );
+  const deps=(version.dependencies||[]).filter((dep)=>{
+    if(dep.dependency_type !== 'required') return false;
+    const depProject=dep.project_id ? String(dep.project_id).toLowerCase() : '';
+    if(depProject && selfIds.has(depProject)) return false;
+    return true;
+  });
   let installed=0;
   for(const dep of deps){
     let depVersion=null;
@@ -475,6 +488,9 @@ async function installRequiredModrinthDependencies(id, modInfo, seen){
       depVersion=versions && versions[0];
     }
     if(!depVersion || seen.has(String(depVersion.id))) continue;
+    // Also skip if the resolved dependency version belongs to the same project.
+    const resolvedProject=String(dep.project_id || depVersion.project_id || '').toLowerCase();
+    if(resolvedProject && selfIds.has(resolvedProject)) continue;
     const file=(depVersion.files||[]).find(f=>f.primary) || (depVersion.files||[])[0];
     if(!file) continue;
     const projectId=dep.project_id || depVersion.project_id;
@@ -749,13 +765,200 @@ async function importModrinthModpack({ projectId, versionId }){
   return importMrpack({ sourceUrl:file.url }, { label:file.filename, name:project?.title || version.name, description:project?.description || version.name, projectId, versionId:version.id });
 }
 
+function mrpackDependenciesFromManifest(manifest){
+  const deps={ minecraft: String(manifest.minecraftVersion || '') };
+  const loader=String(manifest.loader || 'vanilla').toLowerCase();
+  const loaderVersion=manifest.loaderVersion || undefined;
+  if(loader === 'fabric' && loaderVersion) deps['fabric-loader']=String(loaderVersion);
+  else if(loader === 'forge' && loaderVersion) deps.forge=String(loaderVersion);
+  else if(loader === 'neoforge' && loaderVersion) deps.neoforge=String(loaderVersion);
+  else if(loader === 'quilt' && loaderVersion) deps['quilt-loader']=String(loaderVersion);
+  return deps;
+}
+
+function crc32Buffer(buf){
+  let crc=0xffffffff;
+  for(let i=0;i<buf.length;i++){
+    crc ^= buf[i];
+    for(let j=0;j<8;j++){
+      const mask=-(crc & 1);
+      crc=(crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function writeZipArchive(destination, entries){
+  const files=[];
+  let offset=0;
+  const chunks=[];
+  for(const entry of entries){
+    const name=Buffer.from(entry.name, 'utf8');
+    const raw=Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data);
+    const compressed=zlib.deflateRawSync(raw);
+    const useCompression=compressed.length < raw.length;
+    const payload=useCompression ? compressed : raw;
+    const method=useCompression ? 8 : 0;
+    const crc=crc32Buffer(raw);
+    const local=Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(payload.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    files.push({ name, crc, method, compressedSize: payload.length, size: raw.length, offset });
+    chunks.push(local, name, payload);
+    offset += local.length + name.length + payload.length;
+  }
+  const centralStart=offset;
+  for(const file of files){
+    const central=Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(file.method, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(file.crc, 16);
+    central.writeUInt32LE(file.compressedSize, 20);
+    central.writeUInt32LE(file.size, 24);
+    central.writeUInt16LE(file.name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(file.offset, 42);
+    chunks.push(central, file.name);
+    offset += central.length + file.name.length;
+  }
+  const eocd=Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(offset - centralStart, 12);
+  eocd.writeUInt32LE(centralStart, 16);
+  eocd.writeUInt16LE(0, 20);
+  chunks.push(eocd);
+  await fs.writeFile(destination, Buffer.concat(chunks));
+}
+
+async function hashBuffer(buf, algorithm='sha1'){
+  return crypto.createHash(algorithm).update(buf).digest('hex');
+}
+
+/**
+ * Export a modpack as a Modrinth-compatible .mrpack.
+ * Files with an HTTPS download URL are referenced in modrinth.index.json;
+ * everything else (local jars, config overrides, etc.) is embedded under overrides/.
+ */
+async function exportModpack(id, destination){
+  const manifest=await getModpack(id);
+  const gameDir=await ensurePackDirectories(id);
+  let dest=destination
+    ? path.resolve(destination)
+    : path.join(getDataRoot(), 'exports', `${slugify(manifest.name)}.mrpack`);
+  if(!/\.mrpack$/i.test(dest) && !/\.zip$/i.test(dest)){
+    dest = `${dest}.mrpack`;
+  }
+  await ensureDir(path.dirname(dest));
+  progressBus.emitEvent('status',{ message:`Exporting modpack ${manifest.name}…` });
+
+  const indexFiles=[];
+  const zipEntries=[];
+  const skipTopLevel=new Set(['versions','libraries','assets','natives','.cache','logs','crash-reports']);
+
+  async function walk(dir, prefix=''){
+    let items;
+    try{ items=await fs.readdir(dir,{withFileTypes:true}); }
+    catch(error){ if(error.code==='ENOENT') return; throw error; }
+    for(const item of items){
+      const full=path.join(dir, item.name);
+      const rel=prefix ? `${prefix}/${item.name}` : item.name;
+      const relPosix=rel.replaceAll('\\','/');
+      if(!prefix && skipTopLevel.has(item.name)) continue;
+      if(item.isDirectory()){
+        await walk(full, relPosix);
+        continue;
+      }
+      const data=await fs.readFile(full);
+      const lower=relPosix.toLowerCase();
+      // Prefer CDN URLs for mods/resource packs/shaders that came from Modrinth.
+      let remoteEntry=null;
+      if(lower.startsWith('mods/')){
+        remoteEntry=(manifest.mods||[]).find(m=>m.fileName===item.name && m.fileUrl && String(m.fileUrl).startsWith('https://'));
+      }else if(lower.startsWith('resourcepacks/')){
+        remoteEntry=(manifest.resourcepacks||[]).find(m=>m.fileName===item.name && m.fileUrl && String(m.fileUrl).startsWith('https://'));
+      }else if(lower.startsWith('shaderpacks/')){
+        remoteEntry=(manifest.shaderpacks||[]).find(m=>m.fileName===item.name && m.fileUrl && String(m.fileUrl).startsWith('https://'));
+      }
+
+      if(remoteEntry){
+        const sha1=await hashBuffer(data,'sha1');
+        const sha512=await hashBuffer(data,'sha512');
+        indexFiles.push({
+          path: relPosix,
+          hashes: { sha1, sha512 },
+          downloads: [String(remoteEntry.fileUrl)],
+          fileSize: data.length,
+          env: { client: 'required', server: 'unsupported' }
+        });
+      }else{
+        zipEntries.push({ name:`overrides/${relPosix}`, data });
+      }
+    }
+  }
+
+  await walk(gameDir);
+
+  const index={
+    formatVersion: 1,
+    game: 'minecraft',
+    versionId: manifest.mrpackVersionId || manifest.id || slugify(manifest.name),
+    name: manifest.name,
+    summary: manifest.description || '',
+    files: indexFiles,
+    dependencies: mrpackDependenciesFromManifest(manifest)
+  };
+  zipEntries.unshift({
+    name: 'modrinth.index.json',
+    data: Buffer.from(JSON.stringify(index, null, 2), 'utf8')
+  });
+  // Keep a small Amethyst-side metadata blob for round-trips.
+  zipEntries.push({
+    name: 'overrides/.amethyst/modpack.json',
+    data: Buffer.from(JSON.stringify({
+      name: manifest.name,
+      description: manifest.description || '',
+      minecraftVersion: manifest.minecraftVersion,
+      loader: manifest.loader,
+      loaderVersion: manifest.loaderVersion || null,
+      exportedAt: new Date().toISOString(),
+      sourceId: manifest.id
+    }, null, 2), 'utf8')
+  });
+
+  await writeZipArchive(dest, zipEntries);
+  progressBus.emitEvent('modpack-exported',{ id, destination: dest, files: indexFiles.length, overrides: zipEntries.length - 2 });
+  return { destination: dest, files: indexFiles.length, overrides: Math.max(0, zipEntries.length - 2), name: manifest.name };
+}
+
 module.exports={
   modpacksRoot, modpackDir, modpackGameDir, modsFolder, resourcepacksFolder, ensurePackDirectories, validatePackId,
   listModpacks, getModpack, createModpack, deleteModpack, updateModpack,
   installModpack, launchModpack, listMods, addModToPack, removeModFromPack, validatedModDownload,
   addLocalModToPack, listShaderPacks, addShaderPackToPack, removeShaderPackFromPack,
   listResourcePacks, addResourcePackToPack, removeResourcePackFromPack,
-  importMrpack, importModrinthModpack,
+  importMrpack, importModrinthModpack, exportModpack,
   fetchFabricLoaderVersions, fetchFabricProfile, fetchQuiltLoaderVersions, fetchQuiltProfile,
   fetchForgeVersions, fetchForgePromotions, fetchNeoForgeVersions
 };
