@@ -11,6 +11,7 @@ Thumbs.db
 
 # Node package manager output
 node_modules/
+dist/
 npm-debug.log*
 
 # Python cache from the Qt installer

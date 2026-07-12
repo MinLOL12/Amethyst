@@ -92,12 +92,14 @@ function printLauncherUrl(url) {
   console.log('Keep this terminal open while you use the launcher.');
 }
 
-async function startBackend() {
+async function startBackend(options = {}) {
   await initializeStore();
 
   const server = createServer();
-  const port = (process.env.PORT !== undefined && process.env.PORT !== '') ? process.env.PORT : '3000';
-  await listen(server, requestedPort(port));
+  const configuredPort = options.port ?? (
+    process.env.PORT !== undefined && process.env.PORT !== '' ? process.env.PORT : 3000
+  );
+  await listen(server, requestedPort(configuredPort));
 
   const address = server.address();
   return { server, url: `http://127.0.0.1:${address.port}/` };

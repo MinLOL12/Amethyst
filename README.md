@@ -3,10 +3,10 @@
 [![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/MinLOL12/Amethyst) ![Coverage](https://img.shields.io/badge/coolometer-100%25-orange)
 ###### The main branch may be outdated at points.
 
-Amethyst is a dark-purple Minecraft launcher built with Node.js and a
-**polished zero-build web UI**. The launcher runs locally, serves plain HTML,
-CSS, and JavaScript, and requires no frontend framework, bundler, native UI
-toolchain, or extra runtime.
+Amethyst is a dark-purple Minecraft launcher packaged as a native **Electron
+desktop application**. Its Node.js backend and zero-build HTML/CSS/JavaScript
+UI run together inside the app, so Windows users can launch Amethyst from an
+installer or a portable `.exe` without installing Node.js.
 
 > **Legal/download note:** Amethyst does not include or redistribute Minecraft
 > client code, libraries, assets, or copyrighted game files. When you install or
@@ -18,36 +18,44 @@ toolchain, or extra runtime.
 > and exposes full control over the local system (file access, process launch,
 > Java downloads, etc.). Exposing it publicly would allow remote code execution.
 
-## Quick start
+## Install on Windows
 
-Requirements:
+Download either Windows artifact from the latest GitHub release or workflow
+run:
 
-- Node.js 18 or newer.
-- Java 17 or newer to launch Minecraft. Amethyst detects installed Java and can
-  manage Java runtimes through the UI.
-- Internet access for first-time downloads, news, loader metadata, and optional
-  Microsoft login.
+- **`Amethyst-Launcher-Setup-…-x64.exe`** — installer with Start Menu and
+  optional desktop shortcuts.
+- **`Amethyst-Launcher-…-portable.exe`** — standalone executable; no install
+  required.
+
+Java is not bundled because Minecraft versions require different runtimes.
+Amethyst detects installed Java versions and can download managed runtimes from
+Adoptium. Internet access is required for first-time game downloads, metadata,
+news, and optional Microsoft login.
+
+Application data remains in `~/.amethyst`, so upgrading or uninstalling the
+desktop app does not remove instances or accounts.
+
+## Run from source
+
+Contributors need Node.js 22.12 or newer:
 
 ```bash
-npm start
+npm ci
+npm start          # Electron desktop app
+npm run start:web  # optional browser-hosted development mode
 ```
 
-Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
-your browser. Browser mode is the default—no extra `server` flag is required.
-The terminal only hosts the local backend and must remain open while the
-launcher is running.
-###### Amethyst will not work on Node.js versions that are older than Node.js 18.
-
-Amethyst always prints the launcher URL on its own line. If the browser cannot
-be opened automatically (for example, over SSH or on a headless desktop), click
-or copy that URL into a browser.
+The Electron app starts its backend on an unused `127.0.0.1` port and displays
+the complete launcher in its own secured window. Browser mode prints its local
+URL and opens the system browser.
 
 Useful environment variables:
 
 ```bash
-AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
-AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
-PORT=8080 npm start                     # use a fixed local port
+AMETHYST_HOME=/path/to/data npm start       # store data somewhere else
+AMETHYST_NO_OPEN=1 npm run start:web        # do not open a browser automatically
+PORT=8080 npm run start:web                 # use a fixed browser-mode port
 AMETHYST_MS_CLIENT_ID=your-entra-public-client-id npm start  # optional OAuth client
 # Optional with a custom sovereign-cloud/authority registration:
 AMETHYST_MS_DEVICE_CODE_URL=https://authority/devicecode AMETHYST_MS_TOKEN_URL=https://authority/token npm start
@@ -182,11 +190,20 @@ Amethyst/
     └── rules.test.js
 ```
 
-## Development checks
+## Development and packaging
 
 ```bash
 npm test
+npm run pack         # unpacked app for the current platform
+npm run build:win    # NSIS installer + portable Windows .exe
+npm run build:linux  # AppImage + Debian package
+npm run build:mac    # macOS DMG (run on macOS for signing)
 ```
+
+Windows packages are built automatically on pull requests and pushes to
+`main`. The workflow uploads both `.exe` files as build artifacts and attaches
+them to GitHub releases. Release builds are currently unsigned, so Windows may
+display a SmartScreen warning until a code-signing certificate is configured.
 
 ## MVP limitations
 
