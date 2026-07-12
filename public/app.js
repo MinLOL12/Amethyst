@@ -1292,7 +1292,7 @@ async function loadModpackResourcePacks(id) {
 function showModpackModal() { const el = $('#modpack-modal'); if (el) el.style.display = 'flex'; }
 function hideModpackModal() { const el = $('#modpack-modal'); if (el) el.style.display = 'none'; }
 
-async function refreshLoaderVersions() {
+async function refreshModpackLoaderVersions() {
   const loader = $('#mp-new-loader')?.value || 'fabric';
   const mc = $('#mp-new-mc')?.value || '';
   const sel = $('#mp-new-loader-ver');
@@ -2232,9 +2232,9 @@ function bindUi() {
   $('#modpack-modal-close')?.addEventListener('click', () => hideModpackModal());
   $('#mp-new-cancel')?.addEventListener('click', () => hideModpackModal());
   $('#modpack-modal')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) hideModpackModal(); });
-  $('#mp-new-loader')?.addEventListener('change', () => refreshLoaderVersions());
-  $('#mp-new-mc')?.addEventListener('change', () => refreshLoaderVersions());
-  $('#mp-new-loader-refresh')?.addEventListener('click', () => refreshLoaderVersions());
+  $('#mp-new-loader')?.addEventListener('change', () => refreshModpackLoaderVersions());
+  $('#mp-new-mc')?.addEventListener('change', () => refreshModpackLoaderVersions());
+  $('#mp-new-loader-refresh')?.addEventListener('click', () => refreshModpackLoaderVersions());
   $('#mp-new-create')?.addEventListener('click', async () => {
     const name = $('#mp-new-name')?.value.trim();
     const desc = $('#mp-new-desc')?.value.trim();

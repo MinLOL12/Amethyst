@@ -1,4 +1,10 @@
-const DiscordRPC = require('discord-rpc');
+let DiscordRPC = null;
+try {
+  DiscordRPC = require('discord-rpc');
+} catch (_) {
+  DiscordRPC = null;
+}
+
 const { progressBus } = require('./downloader');
 const { readSettings } = require('./accounts');
 
@@ -52,6 +58,11 @@ async function refreshDiscordPresence(launch = currentLaunch) {
     return { connected: false, reason: !clientId ? 'missing-client-id' : 'disabled' };
   }
 
+  if (!DiscordRPC) {
+    await disconnect();
+    return { connected: false, reason: 'discord-rpc-unavailable', message: 'Discord RPC dependency is not installed.' };
+  }
+
   if (!client || connectedClientId !== clientId) {
     await disconnect();
     client = new DiscordRPC.Client({ transport: 'ipc' });
@@ -91,9 +102,9 @@ async function applyDiscordSettings() {
   if (!currentLaunch) {
     const settings = await readSettings();
     if (!settings.discordEnabled) await disconnect();
-    return { connected: Boolean(client) };
+    return { connected: Boolean(client), available: Boolean(DiscordRPC) };
   }
   return refreshDiscordPresence();
 }
 
-module.exports = { applyDiscordSettings, refreshDiscordPresence, disconnect };
+module.exports = { applyDiscordSettings, refreshDiscordPresence, disconnect, activityFor };
