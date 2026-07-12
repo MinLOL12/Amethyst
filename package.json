@@ -18,9 +18,9 @@
     "prebuild:win": "npm run clean",
     "build:win": "electron-builder --win nsis portable --x64 --arm64 --publish never",
     "prebuild:linux": "npm run clean",
-    "build:linux": "electron-builder --linux AppImage deb --x64",
+    "build:linux": "electron-builder --linux AppImage deb --x64 --publish never",
     "prebuild:mac": "npm run clean",
-    "build:mac": "electron-builder --mac dmg"
+    "build:mac": "electron-builder --mac dmg --x64 --publish never"
   },
   "keywords": [
     "minecraft",
