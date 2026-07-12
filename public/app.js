@@ -48,6 +48,7 @@ const pageLabels = {
   modpacks: 'Modpacks',
   accounts: 'Accounts',
   settings: 'Settings',
+  credits: 'Credits',
 };
 
 function escapeHtml(value = '') {
@@ -476,9 +477,31 @@ function interpolatePresence(template, context) {
   return String(template || '').replace(/\{(version|loader|player)\}/g, (_, key) => context[key] || '—');
 }
 
+function syncDiscordRequirement() {
+  const enabled = Boolean($('#settings-discord-enabled')?.checked);
+  const input = $('#settings-discord-client-id');
+  if (!input) return '';
+
+  const applicationId = input.value.trim();
+  let message = '';
+  if (enabled && !applicationId) message = 'Enter a Discord Application ID to enable Discord RPC.';
+  else if (enabled && !/^\d+$/.test(applicationId)) message = 'The Discord Application ID must contain only numbers.';
+
+  input.required = enabled;
+  input.setAttribute('aria-required', String(enabled));
+  input.setAttribute('aria-invalid', String(Boolean(message)));
+  input.setCustomValidity(message);
+  return message;
+}
+
 function updateDiscordPreview(status = '') {
   const preview = $('#settings-discord-preview');
   if (!preview) return;
+  const validationMessage = syncDiscordRequirement();
+  if (validationMessage) {
+    preview.textContent = validationMessage;
+    return;
+  }
   const account = state.accounts.find((item) => item.id === state.settings?.lastAccountId) || state.accounts[0];
   const context = {
     version: $('#ql-version')?.value || state.settings?.lastVersion || 'Minecraft',
@@ -524,6 +547,15 @@ async function loadSettings() {
 }
 
 async function saveSettings(extra = {}) {
+  const discordValidationMessage = syncDiscordRequirement();
+  if (discordValidationMessage) {
+    const applicationId = $('#settings-discord-client-id');
+    updateDiscordPreview(discordValidationMessage);
+    applicationId?.reportValidity();
+    applicationId?.focus();
+    throw new Error(discordValidationMessage);
+  }
+
   const activeTheme = commitThemeForm();
   const body = {
     ...state.settings,
@@ -2248,8 +2280,6 @@ function bindUi() {
   }));
   window.addEventListener('hashchange', () => navigateTo(window.location.hash.slice(1), false));
 
-  $('#home-browse')?.addEventListener('click', () => navigateTo('versions'));
-  $('#home-accounts')?.addEventListener('click', () => navigateTo('accounts'));
   $('#ql-version')?.addEventListener('change', (event) => {
     $('#ql-launch').disabled = !event.target.value || state.downloadActive;
     state.selectedVersionId = event.target.value || state.selectedVersionId;
@@ -2285,16 +2315,6 @@ function bindUi() {
   $('#ql-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
 
   $('#versions-refresh')?.addEventListener('click', () => loadVersions().catch(reportError));
-  $('#versions-import-prism')?.addEventListener('click', async () => {
-    const pathInput = prompt('Enter the full path to the Prism Launcher instance folder:');
-    if (!pathInput) return;
-    try {
-      const { job } = await api('/api/instances/import-prism', { method: 'POST', body: { path: pathInput.trim() } });
-      notify('Prism instance import started.');
-    } catch (error) {
-      reportError(error);
-    }
-  });
   $('#versions-search')?.addEventListener('input', (event) => { state.filterText = event.target.value; renderVersionList(); });
   $$('.filter-tab').forEach((tab) => tab.addEventListener('click', () => {
     const parent = tab.closest('.versions-list-panel, #mp-tabs') || document;
@@ -2468,8 +2488,8 @@ function bindUi() {
   $('#mp-search')?.addEventListener('keydown', (e) => { if (e.key==='Enter') doModSearch({ resetPage: true }); });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key >= '1' && event.key <= '5' && !/input|select|textarea/i.test(document.activeElement?.tagName || '')) {
-      const pages = ['home','versions','modpacks','accounts','settings'];
+    if (event.key >= '1' && event.key <= '6' && !/input|select|textarea/i.test(document.activeElement?.tagName || '')) {
+      const pages = ['home','versions','modpacks','accounts','settings','credits'];
       navigateTo(pages[Number(event.key)-1]);
     }
     if (event.key === 'Escape') {

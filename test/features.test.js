@@ -60,6 +60,30 @@ async function main() {
   assert.equal(saved.fullscreen, true);
   assert.equal(saved.jvmArgs, '-XX:+UseG1GC');
 
+  // Discord RPC remains optional, but enabling it requires a numeric
+  // user-provided Discord Application ID.
+  await assert.rejects(
+    saveSettings({ discordEnabled: true, discordClientId: '' }),
+    /Discord Application ID is required/u
+  );
+  await assert.rejects(
+    saveSettings({ discordEnabled: true, discordClientId: 'not-an-id' }),
+    /must contain only numbers/u
+  );
+  const discordSettings = await saveSettings({
+    discordEnabled: true,
+    discordClientId: '123456789012345678'
+  });
+  assert.equal(discordSettings.discordEnabled, true);
+  assert.equal(discordSettings.discordClientId, '123456789012345678');
+  await assert.rejects(
+    saveSettings({ discordClientId: '' }),
+    /Discord Application ID is required/u
+  );
+  const discordDisabled = await saveSettings({ discordEnabled: false, discordClientId: '' });
+  assert.equal(discordDisabled.discordEnabled, false);
+  assert.equal(discordDisabled.discordClientId, '');
+
   // Theme collection: a player can retain multiple sanitized themes and select
   // one to apply on the next launch. Invalid colour input falls back safely.
   const themed = await saveSettings({
@@ -210,6 +234,20 @@ async function main() {
   assert.ok(cmd.args.includes('--width'));
   assert.ok(cmd.args.includes('1280'));
   assert.ok(cmd.args.includes('-Dtest=1'));
+
+  // Requested navigation and home-page presentation remain represented in the
+  // shipped Electron UI.
+  const ui = await fs.readFile(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const uiScript = await fs.readFile(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  assert.doesNotMatch(ui, /class="hero-card"/u);
+  assert.doesNotMatch(ui, /id="versions-import-prism"/u);
+  assert.match(ui, /id="page-credits"/u);
+  assert.match(ui, /Credits for Amethyst/u);
+  assert.match(ui, /Lumi\/Lumi Faye - Main collaborator\/co-owner/u);
+  assert.match(ui, /MinLol12\/Minveraz - Owner, Main creator/u);
+  assert.match(ui, /from amethyst team :3/u);
+  assert.match(ui, /REQUIRED FOR RPC/u);
+  assert.match(uiScript, /syncDiscordRequirement/u);
 
   // Cleanup
   await fs.rm(tmpRoot, { recursive: true, force: true });

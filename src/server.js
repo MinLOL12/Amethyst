@@ -803,8 +803,11 @@ function createServer() {
       if (url.pathname.startsWith('/api/')) await handleApi(request, response, url);
       else await serveStatic(request, response, url.pathname);
     } catch (error) {
-      // Log the full error for debugging
-      console.error('Server error:', error);
+      const statusCode = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599
+        ? error.status
+        : 500;
+      // Expected client validation errors do not need a server-side stack trace.
+      if (statusCode >= 500) console.error('Server error:', error);
       
       // Provide more detailed error information
       const errorResponse = {
@@ -837,7 +840,7 @@ function createServer() {
       response.setHeader('Access-Control-Allow-Origin', '*');
       response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, PATCH, OPTIONS');
       
-      json(response, 500, errorResponse);
+      json(response, statusCode, errorResponse);
     }
   });
 }

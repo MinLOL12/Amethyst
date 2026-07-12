@@ -189,6 +189,10 @@ async function removeAccount(accountId) {
 
 const MAX_SAVED_THEMES = 24;
 
+function normalizeDiscordApplicationId(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 32);
+}
+
 function themeId(value, index = 0) {
   const normalized = String(value || '')
     .toLowerCase()
@@ -239,8 +243,10 @@ function normalizeSettings(next, defaults, { hasThemeCollection = false } = {}) 
   next.fullscreen = Boolean(next.fullscreen);
   next.maxConcurrentDownloads = Math.min(16, Math.max(1, Number(next.maxConcurrentDownloads) || defaults.maxConcurrentDownloads));
   next.rememberMicrosoftLogin = next.rememberMicrosoftLogin !== false;
-  next.discordEnabled = Boolean(next.discordEnabled);
-  next.discordClientId = String(next.discordClientId || '').replace(/\D/g, '').slice(0, 32);
+  next.discordClientId = normalizeDiscordApplicationId(next.discordClientId);
+  // Discord RPC is optional, but it can never remain enabled without a
+  // user-provided Application ID. This also safely migrates invalid old files.
+  next.discordEnabled = Boolean(next.discordEnabled && next.discordClientId);
   next.discordDetails = String(next.discordDetails || defaults.discordDetails).slice(0, 128);
   next.discordState = String(next.discordState || defaults.discordState).slice(0, 128);
   next.discordLargeImageKey = String(next.discordLargeImageKey || '').trim().slice(0, 64);
@@ -279,15 +285,36 @@ async function readSettings() {
 async function saveSettings(partial) {
   const defaults = getDefaultSettings();
   const current = await readJson(paths().settings, defaults);
-  const hasIncomingThemes = Object.prototype.hasOwnProperty.call(partial || {}, 'themes');
-  const hasIncomingLegacyTheme = Object.prototype.hasOwnProperty.call(partial || {}, 'theme');
+  const incoming = partial && typeof partial === 'object' ? partial : {};
+  const hasCurrentThemeCollection = Array.isArray(current.themes);
+  const hasIncomingThemes = Object.prototype.hasOwnProperty.call(incoming, 'themes');
+  const hasIncomingLegacyTheme = Object.prototype.hasOwnProperty.call(incoming, 'theme');
+  const normalizedCurrent = normalizeSettings(
+    { ...defaults, ...current },
+    defaults,
+    { hasThemeCollection: hasCurrentThemeCollection }
+  );
+  const merged = { ...normalizedCurrent, ...incoming };
+  const discordApplicationId = String(merged.discordClientId || '').trim();
+
+  if (Boolean(merged.discordEnabled) && !discordApplicationId) {
+    const error = new Error('A Discord Application ID is required to enable Discord RPC.');
+    error.status = 400;
+    throw error;
+  }
+  if (Boolean(merged.discordEnabled) && !/^\d+$/.test(discordApplicationId)) {
+    const error = new Error('The Discord Application ID must contain only numbers.');
+    error.status = 400;
+    throw error;
+  }
+
   const next = normalizeSettings(
-    { ...defaults, ...current, ...partial },
+    merged,
     defaults,
     {
       // An old client that only posts `theme` can still update the active
       // theme, while modern clients retain their whole collection.
-      hasThemeCollection: hasIncomingThemes || (!hasIncomingLegacyTheme && Array.isArray(current.themes))
+      hasThemeCollection: hasIncomingThemes || (!hasIncomingLegacyTheme && hasCurrentThemeCollection)
     }
   );
   await writeJson(paths().settings, next);

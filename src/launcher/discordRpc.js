@@ -52,7 +52,7 @@ async function activityFor(settings, launch = currentLaunch) {
 async function refreshDiscordPresence(launch = currentLaunch) {
   currentLaunch = launch;
   const settings = await readSettings();
-  const clientId = clean(settings.discordClientId || process.env.AMETHYST_DISCORD_CLIENT_ID);
+  const clientId = clean(settings.discordClientId);
   if (!settings.discordEnabled || !clientId || !launch) {
     await disconnect();
     return { connected: false, reason: !clientId ? 'missing-client-id' : 'disabled' };
