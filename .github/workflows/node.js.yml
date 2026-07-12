@@ -33,5 +33,5 @@ jobs:
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: MyProgram-Windows
-          path: MyProgram.exe
+          name: Amethyst-Windows
+          path: Amethyst.exe
