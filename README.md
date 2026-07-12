@@ -1,4 +1,7 @@
-# Amethyst
+# Amethyst <img src="https://raw.githubusercontent.com/MinLOL12/Amethyst/main/build/icon.png" width="30">
+
+[![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/MinLOL12/Amethyst) ![Coverage](https://img.shields.io/badge/coolometer-100%25-orange)
+###### The main branch may be outdated at points.
 
 Amethyst is a dark-purple Minecraft launcher built with Node.js and a
 **polished zero-build web UI**. The launcher runs locally, serves plain HTML,
@@ -33,6 +36,7 @@ Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
 your browser. Browser mode is the default—no extra `server` flag is required.
 The terminal only hosts the local backend and must remain open while the
 launcher is running.
+###### Amethyst will not work on Node.js versions that are older than Node.js 18.
 
 Amethyst always prints the launcher URL on its own line. If the browser cannot
 be opened automatically (for example, over SSH or on a headless desktop), click
@@ -45,7 +49,6 @@ AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
 AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
 PORT=8080 npm start                     # use a fixed local port
 AMETHYST_MS_CLIENT_ID=your-entra-public-client-id npm start  # optional OAuth client
-AMETHYST_DISCORD_CLIENT_ID=your-discord-application-id npm start  # optional Rich Presence app
 # Optional with a custom sovereign-cloud/authority registration:
 AMETHYST_MS_DEVICE_CODE_URL=https://authority/devicecode AMETHYST_MS_TOKEN_URL=https://authority/token npm start
 ```
@@ -66,10 +69,7 @@ keeping the implementation simple:
 - Offline and Microsoft account profiles.
 - Java detection and managed Java downloads.
 - Live download queue, speed, ETA, install, launch, and log feedback.
-- Live Minecraft CPU/RAM monitoring and an in-launch game console.
-- A locally saved custom-theme library: create, preview, switch, and delete color themes from Settings.
-- Configurable Discord Rich Presence templates using `{version}`, `{loader}`, and `{player}`, with an in-app presence preview.
-- Keyboard navigation (`1`–`5`) and mobile navigation.
+- Keyboard navigation (`1`–`4`) and mobile navigation.
 
 To change the look, edit `public/index.html` and `public/styles.css`. To change
 behavior, edit `public/app.js`; the Node server automatically serves those
@@ -112,12 +112,10 @@ Forge and NeoForge modpacks use isolated game directories. Before the official i
 - Download the correct Temurin JDK automatically through Adoptium.
 - Choose Java per installation.
 
-### Downloads, settings, logs, and resource usage
+### Downloads, settings, and logs
 
 - Queue downloads with progress, speed, and estimated time remaining.
 - Configure RAM, resolution, fullscreen, JVM arguments, and launch arguments.
-- View live CPU/RAM usage while Minecraft is running.
-- Show a loading state while the game starts, then reveal live game logs once it is running.
 - View live game logs, search logs, copy output, and inspect crash reports.
 - Open instance folders, saves, mods, screenshots, resource packs, logs, and
   crash reports from the launcher.
