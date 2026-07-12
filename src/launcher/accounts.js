@@ -189,8 +189,41 @@ async function removeAccount(accountId) {
 
 const MAX_SAVED_THEMES = 24;
 
+/**
+ * Discord Application IDs are snowflakes (digits). Users often paste a bot
+ * token instead (`base64(id).timestamp.hmac`); accept that shape and extract
+ * the Application ID from the first segment.
+ */
+function parseDiscordApplicationId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { ok: false, id: '', reason: 'empty' };
+
+  // Plain Application ID / client ID snowflake.
+  if (/^\d{1,32}$/.test(raw)) {
+    return { ok: true, id: raw.slice(0, 32) };
+  }
+
+  // Bot token style: MTQ1....GZthgJ.CP-KZ2... (letters are valid here).
+  const parts = raw.split('.');
+  if (parts.length === 3 && parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part))) {
+    try {
+      const decoded = Buffer.from(parts[0], 'base64').toString('utf8').trim();
+      if (/^\d{17,22}$/.test(decoded)) {
+        return { ok: true, id: decoded };
+      }
+    } catch (_) {
+      // fall through to invalid
+    }
+  }
+
+  return { ok: false, id: '', reason: 'invalid' };
+}
+
 function normalizeDiscordApplicationId(value) {
-  return String(value || '').replace(/\D/g, '').slice(0, 32);
+  const parsed = parseDiscordApplicationId(value);
+  if (parsed.ok) return parsed.id;
+  // Preserve empty; drop garbage so corrupt settings cannot re-enable RPC.
+  return '';
 }
 
 function themeId(value, index = 0) {
@@ -295,15 +328,16 @@ async function saveSettings(partial) {
     { hasThemeCollection: hasCurrentThemeCollection }
   );
   const merged = { ...normalizedCurrent, ...incoming };
-  const discordApplicationId = String(merged.discordClientId || '').trim();
+  const discordParsed = parseDiscordApplicationId(merged.discordClientId);
+  // Prefer the normalized snowflake (also unwraps bot-token pastes).
+  if (discordParsed.ok) merged.discordClientId = discordParsed.id;
 
-  if (Boolean(merged.discordEnabled) && !discordApplicationId) {
-    const error = new Error('A Discord Application ID is required to enable Discord RPC.');
-    error.status = 400;
-    throw error;
-  }
-  if (Boolean(merged.discordEnabled) && !/^\d+$/.test(discordApplicationId)) {
-    const error = new Error('The Discord Application ID must contain only numbers.');
+  if (Boolean(merged.discordEnabled) && !discordParsed.ok) {
+    const error = new Error(
+      discordParsed.reason === 'empty'
+        ? 'A Discord Application ID is required to enable Discord RPC.'
+        : 'Enter a valid Discord Application ID or bot token (for example base64Id.timestamp.hmac).'
+    );
     error.status = 400;
     throw error;
   }
