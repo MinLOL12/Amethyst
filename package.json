@@ -33,7 +33,10 @@
     "microsoft",
     "amethyst"
   ],
-  "author": "Amethyst contributors",
+  "author": {
+    "name": "Amethyst contributors",
+    "email": "amethyst@example.com"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=22.12.0"
@@ -119,5 +122,3 @@
     "pidusage": "^4.0.1"
   }
 }
-
-
