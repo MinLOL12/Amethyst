@@ -192,7 +192,9 @@ SmartScreen warning until a code-signing certificate is configured.
 
 The legacy `build/installer.nsh` customization file is intentionally disabled in
 `package.json` because electron-builder auto-loads it by default and it breaks
-CI packaging for the current Windows release workflow.
+CI packaging for the current Windows release workflow. The NSIS installer also
+uses a dedicated plain-text `build/license.txt` resource so the Windows build
+does not depend on the repository's root `LICENSE` file format.
 
 ## MVP limitations
 
