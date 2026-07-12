@@ -863,7 +863,13 @@ async function launchVersion(versionId, accountOrId, options = {}) {
   });
 
   child.on('close', (code, signal) => {
-    if (startupConfirmed) progressBus.emitEvent('launch-exit', { versionId: install.versionId, code, signal });
+    if (startupConfirmed) progressBus.emitEvent('launch-exit', {
+      versionId: install.versionId,
+      baseVersionId,
+      gameDir: install.paths.root,
+      code,
+      signal
+    });
   });
 
   try {

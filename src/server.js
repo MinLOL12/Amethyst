@@ -54,6 +54,7 @@ const {
   readCrashReport,
   saveCrashReportCopy
 } = require('./launcher/logs');
+const { analyzeCrash, analyzeExitOnly, GITHUB_ISSUES_URL } = require('./launcher/crashAnalyzer');
 const { openFolder, listFolderShortcuts, resolveFolder } = require('./launcher/folders');
 const { getRuntimeUsage } = require('./launcher/runtime');
 const { applyDiscordSettings } = require('./launcher/discordRpc');
@@ -619,6 +620,26 @@ async function handleApi(request, response, url) {
     const body = await readBody(request);
     if (!body.path) throw new Error('path is required');
     return json(response, 200, await saveCrashReportCopy(body.path, body.destinationDir));
+  }
+
+  // ── Crash analysis ──────────────────────────────────────────────
+  if (method === 'POST' && url.pathname === '/api/crash-analyze') {
+    const body = await readBody(request);
+    const crashText = String(body.crashText || '');
+    const exitCode = body.exitCode !== undefined ? Number(body.exitCode) : null;
+    const signal = body.signal || null;
+    const versionId = body.versionId || '';
+    const gameDir = body.gameDir || '';
+
+    if (!crashText && exitCode === null) {
+      throw new Error('crashText or exitCode is required');
+    }
+
+    const analysis = crashText
+      ? analyzeCrash({ crashText, exitCode, signal, gameDir, versionId })
+      : analyzeExitOnly({ exitCode, signal, versionId, gameDir });
+
+    return json(response, 200, analysis);
   }
 
   // ── File browser shortcuts ────────────────────────────────────
