@@ -25,6 +25,7 @@ installer or a portable `.exe` without installing Node.js.
 ## Install on Windows
 
 Download Amethyst.exe from releases.
+(broken)
 ## Run from source
 
 Contributors need Node.js 22.12 or newer:
