@@ -27,6 +27,8 @@ const state = {
   loaderVersions: {},
   loaderRequestId: 0,
   gameRunning: false,
+  gameLoading: false,
+  runtimeMemoryLimit: 2048 * 1024 * 1024,
   onlineWasOnline: false,
   pendingRefresh: false,
   lastFetchError: null,
@@ -349,10 +351,60 @@ function syncSelectedLoaderVersion(version) {
 }
 
 // Settings
+const defaultTheme = { name: 'Amethyst', background: '#0b0912', panel: '#171223', accent: '#a879ff', accentBright: '#c6a8ff', text: '#f7f4ff' };
+
+function themeFromForm() {
+  return {
+    name: $('#settings-theme-name')?.value.trim() || 'Custom',
+    background: $('#settings-theme-background')?.value || defaultTheme.background,
+    panel: $('#settings-theme-panel')?.value || defaultTheme.panel,
+    accent: $('#settings-theme-accent')?.value || defaultTheme.accent,
+    accentBright: $('#settings-theme-bright')?.value || defaultTheme.accentBright,
+    text: $('#settings-theme-text')?.value || defaultTheme.text
+  };
+}
+
+function populateThemeForm(theme = defaultTheme) {
+  const value = { ...defaultTheme, ...theme };
+  $('#settings-theme-name').value = value.name;
+  $('#settings-theme-background').value = value.background;
+  $('#settings-theme-panel').value = value.panel;
+  $('#settings-theme-accent').value = value.accent;
+  $('#settings-theme-bright').value = value.accentBright;
+  $('#settings-theme-text').value = value.text;
+}
+
+function applyTheme(theme = defaultTheme) {
+  const value = { ...defaultTheme, ...theme };
+  const root = document.documentElement.style;
+  root.setProperty('--bg', value.background);
+  root.setProperty('--panel-solid', value.panel);
+  root.setProperty('--panel-raised', value.panel);
+  root.setProperty('--violet', value.accent);
+  root.setProperty('--violet-deep', value.accent);
+  root.setProperty('--violet-bright', value.accentBright);
+  root.setProperty('--ink', value.text);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value.background);
+}
+
+function populateDiscordSettings(settings) {
+  $('#settings-discord-enabled').checked = Boolean(settings.discordEnabled);
+  $('#settings-discord-client-id').value = settings.discordClientId || '';
+  $('#settings-discord-details').value = settings.discordDetails || 'Playing Minecraft {version}';
+  $('#settings-discord-state').value = settings.discordState || 'via {loader} · {player}';
+  $('#settings-discord-image-key').value = settings.discordLargeImageKey || '';
+  $('#settings-discord-image-text').value = settings.discordLargeImageText || 'Amethyst Launcher';
+  $('#settings-discord-elapsed').checked = settings.discordShowElapsed !== false;
+}
+
 async function loadSettings() {
   const { settings } = await api('/api/settings');
   state.settings = settings;
+  state.runtimeMemoryLimit = (Number(settings.memoryMb) || 2048) * 1024 * 1024;
   syncMemorySliders(settings.memoryMb);
+  populateDiscordSettings(settings);
+  populateThemeForm(settings.theme);
+  applyTheme(settings.theme);
   $('#settings-java-path').value = settings.javaPath || '';
   if (settings.lastVersion && $('#ql-version')) $('#ql-version').value = settings.lastVersion;
   await selectLoader(settings.loaderType || 'vanilla', settings.loaderVersion || '');
@@ -371,11 +423,21 @@ async function saveSettings(extra = {}) {
     lastAccountId: state.settings?.lastAccountId || '',
     loaderType: selectedLoaderType(),
     loaderVersion: selectedLoaderType() === 'vanilla' ? '' : selectedLoaderVersion(),
+    discordEnabled: Boolean($('#settings-discord-enabled')?.checked),
+    discordClientId: $('#settings-discord-client-id')?.value.trim() || '',
+    discordDetails: $('#settings-discord-details')?.value.trim() || 'Playing Minecraft {version}',
+    discordState: $('#settings-discord-state')?.value.trim() || 'via {loader} · {player}',
+    discordLargeImageKey: $('#settings-discord-image-key')?.value.trim() || '',
+    discordLargeImageText: $('#settings-discord-image-text')?.value.trim() || 'Amethyst Launcher',
+    discordShowElapsed: $('#settings-discord-elapsed')?.checked !== false,
+    theme: themeFromForm(),
     ...extra,
   };
   const { settings } = await api('/api/settings', { method: 'POST', body });
   state.settings = settings;
+  state.runtimeMemoryLimit = settings.memoryMb * 1024 * 1024;
   syncMemorySliders(settings.memoryMb);
+  applyTheme(settings.theme);
   log('Settings saved.');
   return settings;
 }
@@ -1419,6 +1481,74 @@ async function installModrinthModpack(hit, ver, button) {
   }
 }
 
+// Live game session
+function appendGameConsole(message, stream = 'stdout') {
+  const consoleEl = $('#game-console');
+  if (!consoleEl || !message) return;
+  const prefix = stream === 'stderr' ? '[ERR] ' : '';
+  consoleEl.textContent = `${consoleEl.textContent}${prefix}${String(message).replace(/\r/g, '')}`.slice(-100000);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+function formatElapsed(milliseconds = 0) {
+  const total = Math.floor(Math.max(0, milliseconds) / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
+}
+
+function showRuntimeLoading(versionId = '') {
+  state.gameLoading = true;
+  state.gameRunning = false;
+  $('#runtime-card').hidden = false;
+  $('#runtime-title').textContent = `Loading Minecraft${versionId ? ` ${versionId}` : ''}…`;
+  $('#runtime-state').className = 'runtime-state loading';
+  $('#runtime-state').innerHTML = '<i></i><span>Starting</span>';
+  $('#game-console-wrap').hidden = true;
+  $('#game-console').textContent = '';
+}
+
+function showRuntimeReady(event) {
+  state.gameLoading = false;
+  state.gameRunning = true;
+  $('#runtime-card').hidden = false;
+  $('#runtime-title').textContent = `Minecraft ${event.baseVersionId || event.versionId || ''} is running`;
+  $('#runtime-state').className = 'runtime-state';
+  $('#runtime-state').innerHTML = '<i></i><span>Live</span>';
+  $('#runtime-pid').textContent = event.pid ? `PID ${event.pid}` : 'Running';
+  $('#game-console-wrap').hidden = false;
+}
+
+function updateResourceUsage(event) {
+  if (!event.running) return;
+  const cpu = Math.max(0, Number(event.cpu) || 0);
+  const memory = Math.max(0, Number(event.memory) || 0);
+  $('#runtime-cpu').textContent = `${cpu.toFixed(1)}%`;
+  $('#runtime-ram').textContent = `${(memory / 1024 / 1024).toFixed(0)} MB`;
+  $('#runtime-pid').textContent = event.pid ? `PID ${event.pid}` : 'Running';
+  $('#runtime-elapsed').textContent = formatElapsed(event.elapsed);
+  $('#runtime-cpu-bar').style.width = `${Math.min(100, cpu)}%`;
+  $('#runtime-ram-bar').style.width = `${Math.min(100, memory / Math.max(1, state.runtimeMemoryLimit) * 100)}%`;
+}
+
+function stopRuntimeUi(message) {
+  state.gameLoading = false;
+  state.gameRunning = false;
+  $('#runtime-title').textContent = message;
+  $('#runtime-state').className = 'runtime-state stopped';
+  $('#runtime-state').innerHTML = '<i></i><span>Stopped</span>';
+}
+
+async function loadRuntime() {
+  const runtime = await api('/api/runtime');
+  if (!runtime.running) return;
+  showRuntimeReady(runtime);
+  updateResourceUsage(runtime);
+  const { lines = [] } = await api('/api/logs?limit=300').catch(() => ({ lines: [] }));
+  for (const line of lines.filter(entry => entry.source === 'minecraft')) appendGameConsole(`${line.message}${line.message.endsWith('\n') ? '' : '\n'}`, line.stream);
+}
+
 // Status and modal
 async function loadStatus() {
   try {
@@ -1665,26 +1795,41 @@ function connectEvents() {
         $('#modal-status-text').textContent = event.message;
         break;
       case 'launch-start':
-        state.gameRunning = true;
+        if (!state.gameLoading) showRuntimeLoading(event.baseVersionId || event.versionId);
         log(`Launching ${event.versionId} with ${event.loaderType && event.loaderType !== 'vanilla' ? `${event.loaderType} ${event.loaderVersion || ''}`.trim() : 'vanilla'} (${event.mainClass || 'Minecraft'}) using ${event.java}`);
-        setBusy(false, 'Minecraft starting');
-        hideModal();
-        notify(`Minecraft ${event.versionId} is starting.`);
+        setBusy(true, 'Minecraft loading');
+        if ($('#download-modal')?.style.display === 'none') showModal('Loading Minecraft', event.baseVersionId || event.versionId);
+        $('#modal-status-text').textContent = 'Java started. Waiting for Minecraft to finish loading…';
+        notify(`Minecraft ${event.versionId} is loading.`);
         break;
-      case 'game-log': log((event.message || '').trim()); break;
+      case 'launch-ready':
+        showRuntimeReady(event);
+        setBusy(false, 'Minecraft running');
+        hideModal();
+        notify(`Minecraft ${event.baseVersionId || event.versionId} is running.`);
+        break;
+      case 'resource-usage': updateResourceUsage(event); break;
+      case 'discord-rpc':
+        if (event.message) log(`Discord RPC: ${event.message}`, 'error');
+        break;
+      case 'game-log':
+        log((event.message || '').trim());
+        appendGameConsole(event.message || '', event.stream);
+        break;
       case 'launch-error':
-        state.gameRunning = false;
+        stopRuntimeUi('Minecraft failed to start');
         setBusy(false, 'Launch failed');
         updateModal('!', event.message || 'Minecraft could not start.', false, true);
         notify(event.message || 'Minecraft could not start.', 'error');
         log(event.message || 'Minecraft could not start.', 'error');
         break;
       case 'launch-exit': {
-        state.gameRunning = false;
         const failed = event.code !== 0 || Boolean(event.signal);
-        setBusy(false, failed ? 'Launch failed' : 'Ready');
         const message = `Minecraft exited with code ${event.code ?? 'n/a'}${event.signal ? ` (${event.signal})` : ''}.`;
+        stopRuntimeUi(failed ? 'Minecraft stopped unexpectedly' : 'Minecraft session ended');
+        setBusy(false, failed ? 'Launch failed' : 'Ready');
         log(message, failed ? 'error' : 'info');
+        appendGameConsole(`\n[Amethyst] ${message}\n`, failed ? 'stderr' : 'stdout');
         if (failed) notify(`${message} See the launcher log for the Java error.`, 'error');
         break;
       }
@@ -1885,6 +2030,10 @@ function bindUi() {
 
   $('#settings-save')?.addEventListener('click', () => saveSettings().then(() => notify('Settings saved.')).catch(reportError));
   $('#settings-memory')?.addEventListener('input', (event) => syncMemorySliders(event.target.value));
+  $('#settings-theme-preview')?.addEventListener('click', () => { applyTheme(themeFromForm()); notify('Theme preview applied. Save to keep it.'); });
+  $('#settings-theme-reset')?.addEventListener('click', () => { populateThemeForm(defaultTheme); applyTheme(defaultTheme); });
+  $$('.theme-colors input[type="color"]').forEach(input => input.addEventListener('input', () => applyTheme(themeFromForm())));
+  $('#console-clear')?.addEventListener('click', () => { $('#game-console').textContent = ''; });
   $('#settings-change-dir')?.addEventListener('click', () => showDriveModal());
   $('#drive-cancel')?.addEventListener('click', hideDriveModal);
   $('#drive-modal-close')?.addEventListener('click', hideDriveModal);
@@ -2006,7 +2155,7 @@ async function boot() {
   connectEvents();
   await loadStatus();
   await loadSettings();
-  const results = await Promise.allSettled([loadAccounts(), loadVersions(), loadJava(), loadNews(), loadModpacks()]);
+  const results = await Promise.allSettled([loadAccounts(), loadVersions(), loadJava(), loadNews(), loadModpacks(), loadRuntime()]);
   results.filter((result) => result.status === 'rejected').forEach((result) => reportError(result.reason));
   await loadInstalledVersions();
   renderVersionSelect();

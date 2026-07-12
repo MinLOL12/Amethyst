@@ -64,6 +64,21 @@ function getDefaultSettings() {
     lastInstanceId: '',
     maxConcurrentDownloads: 8,
     rememberMicrosoftLogin: true,
+    discordEnabled: false,
+    discordClientId: '',
+    discordDetails: 'Playing Minecraft {version}',
+    discordState: 'via {loader} · {player}',
+    discordLargeImageKey: '',
+    discordLargeImageText: 'Amethyst Launcher',
+    discordShowElapsed: true,
+    theme: {
+      name: 'Amethyst',
+      background: '#0b0912',
+      panel: '#171223',
+      accent: '#a879ff',
+      accentBright: '#c6a8ff',
+      text: '#f7f4ff'
+    },
     // Quick Launch uses these to remember the selected runtime. Vanilla is
     // represented explicitly so an old settings file cannot accidentally
     // reuse a stale loader version.

@@ -55,6 +55,8 @@ const {
   saveCrashReportCopy
 } = require('./launcher/logs');
 const { openFolder, listFolderShortcuts, resolveFolder } = require('./launcher/folders');
+const { getRuntimeUsage } = require('./launcher/runtime');
+const { applyDiscordSettings } = require('./launcher/discordRpc');
 const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 
 // Modpack system (additional)
@@ -344,7 +346,13 @@ async function handleApi(request, response, url) {
 
   if (method === 'POST' && url.pathname === '/api/settings') {
     const body = await readBody(request);
-    return json(response, 200, { settings: await saveSettings(body) });
+    const settings = await saveSettings(body);
+    const discord = await applyDiscordSettings().catch((error) => ({ connected: false, message: error.message }));
+    return json(response, 200, { settings, discord });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/runtime') {
+    return json(response, 200, getRuntimeUsage());
   }
 
   // ── News ──────────────────────────────────────────────────────

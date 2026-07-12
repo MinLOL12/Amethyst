@@ -203,6 +203,23 @@ async function saveSettings(partial) {
   next.fullscreen = Boolean(next.fullscreen);
   next.maxConcurrentDownloads = Math.min(16, Math.max(1, Number(next.maxConcurrentDownloads) || defaults.maxConcurrentDownloads));
   next.rememberMicrosoftLogin = next.rememberMicrosoftLogin !== false;
+  next.discordEnabled = Boolean(next.discordEnabled);
+  next.discordClientId = String(next.discordClientId || '').replace(/\D/g, '').slice(0, 32);
+  next.discordDetails = String(next.discordDetails || defaults.discordDetails).slice(0, 128);
+  next.discordState = String(next.discordState || defaults.discordState).slice(0, 128);
+  next.discordLargeImageKey = String(next.discordLargeImageKey || '').trim().slice(0, 64);
+  next.discordLargeImageText = String(next.discordLargeImageText || defaults.discordLargeImageText).slice(0, 128);
+  next.discordShowElapsed = next.discordShowElapsed !== false;
+  const inputTheme = next.theme && typeof next.theme === 'object' ? next.theme : {};
+  const color = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
+  next.theme = {
+    name: String(inputTheme.name || defaults.theme.name).trim().slice(0, 32),
+    background: color(inputTheme.background, defaults.theme.background),
+    panel: color(inputTheme.panel, defaults.theme.panel),
+    accent: color(inputTheme.accent, defaults.theme.accent),
+    accentBright: color(inputTheme.accentBright, defaults.theme.accentBright),
+    text: color(inputTheme.text, defaults.theme.text)
+  };
   next.jvmArgs = String(next.jvmArgs || '');
   next.launchArgs = String(next.launchArgs || '');
   const loaderType = String(next.loaderType || 'vanilla').toLowerCase();
