@@ -84,6 +84,7 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon-header.ico",
+      "include": null,
       "license": "LICENSE",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,

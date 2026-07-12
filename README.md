@@ -185,10 +185,14 @@ npm run build:linux  # AppImage + Debian package
 npm run build:mac    # macOS DMG (run on macOS for signing)
 ```
 
-Windows packages are built automatically on pull requests and pushes to
-`main`. The workflow uploads both `.exe` files as build artifacts and attaches
-them to GitHub releases. Release builds are currently unsigned, so Windows may
-display a SmartScreen warning until a code-signing certificate is configured.
+Windows packages are built automatically on pushes to `main`. The workflow
+uploads both `.exe` files as build artifacts and attaches them to GitHub
+releases. Release builds are currently unsigned, so Windows may display a
+SmartScreen warning until a code-signing certificate is configured.
+
+The legacy `build/installer.nsh` customization file is intentionally disabled in
+`package.json` because electron-builder auto-loads it by default and it breaks
+CI packaging for the current Windows release workflow.
 
 ## MVP limitations
 
