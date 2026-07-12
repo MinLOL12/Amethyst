@@ -294,6 +294,11 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 9px; backgro
 .mod-browser-controls { display: grid; grid-template-columns: minmax(180px, 1fr) 155px auto; gap: 8px; padding: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(255,255,255,.018); }
 .mod-browser-info { padding: 10px 14px 0; font-size: .7rem; }
 .mod-browser-results { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; padding: 14px; overflow-y: auto; }
+.mod-browser-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(255, 255, 255, 0.018); font-size: 0.76rem; flex-shrink: 0; }
+.mod-browser-pagination .pagination-info { color: var(--ink-muted); }
+.mod-browser-pagination .pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mod-browser-pagination .page-btn { min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 0.76rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.mod-browser-pagination .page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .mod-browser-results .mod-item { display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.03); }
 .mod-browser-results .mod-item-icon { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; background: var(--panel-raised); }
 .mod-browser-results .mod-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

@@ -4,7 +4,10 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { getDataRoot } = require('../config');
 const { ensureDir, readJson, writeJson } = require('./store');
-const { fetchJson, downloadFile, progressBus } = require('./downloader');
+const downloader = require('./downloader');
+function fetchJson(...args) { return downloader.fetchJson(...args); }
+function downloadFile(...args) { return downloader.downloadFile(...args); }
+const progressBus = { emitEvent(...args) { return downloader.progressBus.emitEvent(...args); } };
 // gamePaths moved to minecraftPaths in newer main, fallback to minecraft
 let gamePaths;
 try { ({ gamePaths } = require('./minecraftPaths')); } catch { ({ gamePaths } = require('./minecraft')); }
@@ -77,7 +80,7 @@ async function createModpack({ name, minecraftVersion, loader, loaderVersion, de
   if(!valid.includes(l)) l='vanilla';
   const id=newId(name); const now=new Date().toISOString();
   const gameDir = await ensurePackDirectories(id);
-  const manifest={ id, name:name.trim(), description:description||'', minecraftVersion, loader:l, loaderVersion:loaderVersion||null, createdAt:now, updatedAt:now, mods:[], gameDir, modsDir:modsFolder(id) };
+  const manifest={ id, name:name.trim(), description:description||'', minecraftVersion, loader:l, loaderVersion:loaderVersion||null, createdAt:now, updatedAt:now, mods:[], resourcepacks:[], shaderpacks:[], gameDir, modsDir:modsFolder(id) };
   await saveModpackFile(manifest);
   return manifest;
 }
@@ -88,6 +91,8 @@ async function updateModpack(id,patch){
   // Mods are managed by the install/remove endpoints, never by an arbitrary
   // metadata patch.
   next.mods=ex.mods||[];
+  next.resourcepacks=ex.resourcepacks||[];
+  next.shaderpacks=ex.shaderpacks||[];
   await ensurePackDirectories(id);
   await writeJson(modpackJsonPath(id),next);
   return next;
@@ -532,6 +537,48 @@ async function addLocalModToPack(id, { filePath, fileUrl } = {}){
   return entry;
 }
 
+function resourcepacksFolder(id){ return path.join(modpackGameDir(id), 'resourcepacks'); }
+
+async function listResourcePacks(id){
+  const manifest=await getModpack(id);
+  await ensurePackDirectories(id);
+  await ensureDir(resourcepacksFolder(id));
+  return Promise.all((manifest.resourcepacks||[]).map(async entry=>{
+    try{ const stat=await fs.stat(path.join(resourcepacksFolder(id),entry.fileName)); return {...entry,installed:stat.isFile()&&stat.size>0,sizeOnDisk:stat.size}; }
+    catch{ return {...entry,installed:false,sizeOnDisk:0}; }
+  }));
+}
+
+async function addResourcePackToPack(id, resourceInfo){
+  const manifest=await getModpack(id);
+  await ensurePackDirectories(id);
+  await ensureDir(resourcepacksFolder(id));
+  const fileName=String(resourceInfo.fileName||'').trim();
+  if(!fileName || fileName!==path.basename(fileName) || /[\\/\0]/.test(fileName)) throw new Error('Invalid resource pack file name');
+  if(!/\.(zip|jar)$/i.test(fileName)) throw new Error('Resource packs must be .zip or .jar files');
+  let fileUrl;
+  try{ fileUrl=new URL(String(resourceInfo.fileUrl||'')); }catch{ throw new Error('Invalid resource pack URL'); }
+  if(fileUrl.protocol!=='https:') throw new Error('Resource pack URLs must use HTTPS');
+  const dest=path.join(resourcepacksFolder(id),fileName);
+  await downloadFile(fileUrl.toString(),dest,{label:fileName,size:resourceInfo.size});
+  const stat=await fs.stat(dest);
+  const entry={id:crypto.randomBytes(8).toString('hex'),source:resourceInfo.source||'modrinth',projectId:resourceInfo.projectId,projectSlug:resourceInfo.projectSlug||resourceInfo.projectId,title:resourceInfo.title||fileName,versionId:resourceInfo.versionId,fileName,fileUrl:fileUrl.toString(),installedAt:new Date().toISOString(),installed:true,sizeOnDisk:stat.size};
+  manifest.resourcepacks=(manifest.resourcepacks||[]).filter(r=>r.projectId!==entry.projectId&&r.fileName!==fileName);
+  manifest.resourcepacks.push(entry);
+  await saveModpackFile(manifest);
+  return entry;
+}
+
+async function removeResourcePackFromPack(modpackId, resourceId){
+  const manifest=await getModpack(modpackId);
+  const entry=(manifest.resourcepacks||[]).find(r=>r.id===resourceId||r.fileName===resourceId);
+  if(!entry) throw new Error('Resource pack not found');
+  await fs.rm(path.join(resourcepacksFolder(modpackId),entry.fileName),{force:true}).catch(()=>{});
+  manifest.resourcepacks=(manifest.resourcepacks||[]).filter(r=>r.id!==entry.id);
+  await saveModpackFile(manifest);
+  return manifest.resourcepacks;
+}
+
 function shaderpacksFolder(id){ return path.join(modpackGameDir(id), 'shaderpacks'); }
 
 async function listShaderPacks(id){
@@ -654,6 +701,8 @@ async function importMrpack(source, extra={}){
   }
   const { mapLimit }=require('./downloader');
   const installedMods=[];
+  const installedShaderPacks=[];
+  const installedResourcePacks=[];
   const files=(index.files||[]).filter(file=>file?.env?.client !== 'unsupported');
   await mapLimit(files, 6, async file=>{
     const rel=safeRelativePath(file.path);
@@ -665,10 +714,18 @@ async function importMrpack(source, extra={}){
     if(rel.toLowerCase().startsWith('mods/') && /\.jar$/i.test(rel)){
       const stat=await fs.stat(dest);
       installedMods.push({id:crypto.randomBytes(8).toString('hex'),source:'modrinth-pack',projectId:`pack:${rel}`,projectSlug:'modrinth-pack',title:path.basename(rel),versionId:null,fileName:path.basename(rel),fileUrl:url,installedAt:new Date().toISOString(),installed:true,sizeOnDisk:stat.size});
+    } else if(rel.toLowerCase().startsWith('shaderpacks/') && /\.(zip|jar)$/i.test(rel)){
+      const stat=await fs.stat(dest);
+      installedShaderPacks.push({id:crypto.randomBytes(8).toString('hex'),source:'modrinth-pack',projectId:`pack:${rel}`,projectSlug:'modrinth-pack',title:path.basename(rel),versionId:null,fileName:path.basename(rel),fileUrl:url,installedAt:new Date().toISOString(),installed:true,sizeOnDisk:stat.size});
+    } else if(rel.toLowerCase().startsWith('resourcepacks/') && /\.(zip|jar)$/i.test(rel)){
+      const stat=await fs.stat(dest);
+      installedResourcePacks.push({id:crypto.randomBytes(8).toString('hex'),source:'modrinth-pack',projectId:`pack:${rel}`,projectSlug:'modrinth-pack',title:path.basename(rel),versionId:null,fileName:path.basename(rel),fileUrl:url,installedAt:new Date().toISOString(),installed:true,sizeOnDisk:stat.size});
     }
   });
   const saved=await getModpack(manifest.id);
   saved.mods=installedMods;
+  saved.shaderpacks=installedShaderPacks;
+  saved.resourcepacks=installedResourcePacks;
   saved.importedFrom=source.sourceUrl || source.filePath || 'mrpack';
   saved.mrpackFormatVersion=index.formatVersion || 1;
   saved.mrpackVersionId=index.versionId || extra.versionId || null;
@@ -693,10 +750,11 @@ async function importModrinthModpack({ projectId, versionId }){
 }
 
 module.exports={
-  modpacksRoot, modpackDir, modpackGameDir, modsFolder, ensurePackDirectories, validatePackId,
+  modpacksRoot, modpackDir, modpackGameDir, modsFolder, resourcepacksFolder, ensurePackDirectories, validatePackId,
   listModpacks, getModpack, createModpack, deleteModpack, updateModpack,
   installModpack, launchModpack, listMods, addModToPack, removeModFromPack, validatedModDownload,
   addLocalModToPack, listShaderPacks, addShaderPackToPack, removeShaderPackFromPack,
+  listResourcePacks, addResourcePackToPack, removeResourcePackFromPack,
   importMrpack, importModrinthModpack,
   fetchFabricLoaderVersions, fetchFabricProfile, fetchQuiltLoaderVersions, fetchQuiltProfile,
   fetchForgeVersions, fetchForgePromotions, fetchNeoForgeVersions

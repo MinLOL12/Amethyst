@@ -5,7 +5,7 @@ const MODRINTH_API = 'https://api.modrinth.com/v2';
 function buildFacets({ loaders, gameVersions, categories, projectType }) {
   const facets = [];
   if (projectType) facets.push([`project_type:${projectType}`]);
-  if (loaders && loaders.length) facets.push(loaders.map(l => `categories:${l}`));
+  if ((!projectType || projectType === 'mod' || projectType === 'modpack') && loaders && loaders.length) facets.push(loaders.map(l => `categories:${l}`));
   if (gameVersions && gameVersions.length) facets.push(gameVersions.map(v => `versions:${v}`));
   if (categories && categories.length) facets.push(categories.map(c => `categories:${c}`));
   // Ensure we only search mods by default? Caller controls
@@ -17,7 +17,7 @@ async function searchProjects({ query = '', loaders = [], gameVersions = [], cat
   if (query) params.set('query', query);
   const facets = [];
   if (projectType) facets.push([`project_type:${projectType}`]);
-  if (loaders && loaders.length) {
+  if ((!projectType || projectType === 'mod' || projectType === 'modpack') && loaders && loaders.length) {
     // loaders facet uses "categories" for loader? Actually modrinth uses: categories:loader? According to docs, loader is categories as well. Or use 'categories:%loader' indeed, but also there's 'categories' includes loaders. We'll use categories facet.
     // However newer docs use 'categories:forge' etc. So we add.
     facets.push(loaders.map(l => `categories:${l}`));

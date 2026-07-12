@@ -707,6 +707,22 @@ async function handleApi(request, response, url) {
     return json(response, 200, { shaders: remaining });
   }
 
+  const modpackResourcePacks = matchRoute(url.pathname, '/api/modpacks/:id/resourcepacks');
+  if (modpackResourcePacks) {
+    if (method === 'GET') return json(response, 200, { resourcepacks: await modpacks.listResourcePacks(modpackResourcePacks.id) });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const entry = await runExclusive(`Install resource pack ${body.fileName || ''}`, () => modpacks.addResourcePackToPack(modpackResourcePacks.id, body));
+      return json(response, 201, { resourcepack: entry });
+    }
+  }
+
+  const modpackResourceDel = matchRoute(url.pathname, '/api/modpacks/:packId/resourcepacks/:resourceId');
+  if (method === 'DELETE' && modpackResourceDel) {
+    const remaining = await modpacks.removeResourcePackFromPack(modpackResourceDel.packId, modpackResourceDel.resourceId);
+    return json(response, 200, { resourcepacks: remaining });
+  }
+
   const modpackModDel = matchRoute(url.pathname, '/api/modpacks/:packId/mods/:modId');
   if (method === 'DELETE' && modpackModDel) {
     const remaining = await modpacks.removeModFromPack(modpackModDel.packId, modpackModDel.modId);

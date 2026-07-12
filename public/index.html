@@ -126,18 +126,19 @@
       </div>
 
       <div class="page" id="page-modpacks">
-        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Browse Modrinth mods, modpacks, and shader packs without leaving Amethyst.</p></div><div class="heading-actions"><button id="modpacks-import" class="button button-subtle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg><span>Import modpack</span></button><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
+        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Browse Modrinth mods, modpacks, resource packs, and shader packs without leaving Amethyst.</p></div><div class="heading-actions"><button id="modpacks-import" class="button button-subtle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg><span>Import modpack</span></button><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
         <section class="card modpack-picker-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Choose a modpack</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="modpack-rail" id="modpack-list"></div></section>
         <div class="modpack-split-layout">
           <section class="card mod-browser-panel" aria-label="Mod selector">
             <div class="panel-heading"><div><span class="section-eyebrow">MOD SELECTOR</span><h2>Download content</h2></div><span class="panel-icon">⌕</span></div>
             <div class="mod-browser-controls">
               <input id="mp-search" placeholder="Search Modrinth…" aria-label="Search Modrinth">
-              <select id="mp-project-type" aria-label="Content type"><option value="mod">Mods</option><option value="modpack">Modpacks</option><option value="shader">Shader packs</option></select>
+              <select id="mp-project-type" aria-label="Content type"><option value="mod">Mods</option><option value="modpack">Modpacks</option><option value="resourcepack">Resource packs</option><option value="shader">Shader packs</option></select>
               <button id="mp-search-btn" class="button button-quiet">Search</button>
             </div>
-            <div id="mp-browse-info" class="muted mod-browser-info">Select a pack, then search for mods or shaders. Modpack results can create a new pack.</div>
+            <div id="mp-browse-info" class="muted mod-browser-info">Select a pack, then search for mods, resource packs, or shaders. Modpack results can create a new pack.</div>
             <div id="mp-browse-results" class="mod-browser-results"></div>
+            <div id="mp-browse-pagination" class="mod-browser-pagination" style="display:none"></div>
           </section>
           <section class="card modpack-workspace-panel" id="modpack-detail" aria-label="Selected modpack">
             <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create, import, or select a pack.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
@@ -150,8 +151,9 @@
                 <button id="mp-add-jar" class="button button-subtle"><span>Add .jar</span></button>
                 <button id="mp-delete" class="button button-quiet" style="color:#ff7f9f">Delete</button>
               </div>
-              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="shaders">Shaders</button><button class="filter-tab" data-tab="settings">Settings</button></div>
+              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="resourcepacks">Resource packs</button><button class="filter-tab" data-tab="shaders">Shaders</button><button class="filter-tab" data-tab="settings">Settings</button></div>
               <div id="mp-tab-mods"><div id="mp-mods-list" class="mod-installed-list"></div></div>
+              <div id="mp-tab-resourcepacks" style="display:none"><div id="mp-resourcepacks-list" class="mod-installed-list"><span class="muted">Resource packs you install from the selector appear here.</span></div></div>
               <div id="mp-tab-shaders" style="display:none"><div id="mp-shaders-list" class="mod-installed-list"><span class="muted">Shader packs you install from the selector appear here.</span></div></div>
               <div id="mp-tab-settings" style="display:none"><div class="detail-info" style="margin-top:12px"><div class="info-row"><span>NAME</span><strong id="mp-set-name">—</strong></div><div class="info-row"><span>MC VERSION</span><strong id="mp-set-mc">—</strong></div><div class="info-row"><span>LOADER</span><strong id="mp-set-loader">—</strong></div><div class="info-row"><span>LOADER VER</span><strong id="mp-set-loader-ver">—</strong></div><div class="info-row"><span>GAME DIR</span><strong id="mp-set-dir">—</strong></div><div class="info-row"><span>MODS DIR</span><strong id="mp-set-mods-dir">—</strong></div><div class="info-row"><span>CUSTOM ID</span><strong id="mp-set-custom">—</strong></div></div></div>
             </div>
