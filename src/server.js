@@ -60,7 +60,6 @@ const { APP_NAME, APP_VERSION, getDataRoot } = require('./config');
 // Modpack system (additional)
 const modpacks = require('./launcher/modpacks');
 const modrinth = require('./launcher/modrinth');
-const curseforge = require('./launcher/curseforge');
 const skins = require('./launcher/skins');
 
 const publicDir = path.join(__dirname, '..', 'public');
@@ -88,7 +87,9 @@ function mimeType(file) {
 function json(response, statusCode, value) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store'
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS'
   });
   response.end(JSON.stringify(value, null, 2));
 }
@@ -144,6 +145,20 @@ async function runExclusive(name, task) {
   }
 }
 
+async function directorySize(dir) {
+  let total = 0;
+  let entries = [];
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return 0; }
+  for (const entry of entries) {
+    const file = path.join(dir, entry.name);
+    try {
+      if (entry.isDirectory()) total += await directorySize(file);
+      else if (entry.isFile()) total += (await fs.stat(file)).size;
+    } catch (_) {}
+  }
+  return total;
+}
+
 function matchRoute(pathname, pattern) {
   const pathParts = pathname.split('/').filter(Boolean);
   const patternParts = pattern.split('/').filter(Boolean);
@@ -160,12 +175,27 @@ function matchRoute(pathname, pattern) {
 }
 
 async function handleApi(request, response, url) {
+  // Add CORS headers for all API responses
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+  };
+  
+  // Handle OPTIONS preflight requests
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204, corsHeaders);
+    response.end();
+    return;
+  }
+
   if (url.pathname === '/api/events') {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store',
       Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no'
+      'X-Accel-Buffering': 'no',
+      ...corsHeaders
     });
     response.write(
       `data: ${JSON.stringify({ type: 'hello', app: APP_NAME, version: APP_VERSION, at: new Date().toISOString() })}\n\n`
@@ -183,8 +213,7 @@ async function handleApi(request, response, url) {
       version: APP_VERSION,
       dataRoot: getDataRoot(),
       busyTask,
-      loaders: LOADERS,
-      curseforgeEnabled: !!curseforge.getApiKey()
+      loaders: LOADERS
     });
   }
 
@@ -198,6 +227,22 @@ async function handleApi(request, response, url) {
     const gameDir = url.searchParams.get('gameDir') || settings.gameDir;
     const installed = await listInstalledVersions(gameDir);
     return json(response, 200, { versions: installed });
+  }
+
+  if (method === 'GET' && url.pathname === '/api/storage/big-versions') {
+    const settings = await readSettings();
+    const gameDir = url.searchParams.get('gameDir') || settings.gameDir;
+    const versionsDir = path.join(gameDir, 'versions');
+    let entries = [];
+    try { entries = await fs.readdir(versionsDir, { withFileTypes: true }); } catch (_) {}
+    const versions = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(versionsDir, entry.name);
+      versions.push({ id: entry.name, path: dir, size: await directorySize(dir) });
+    }
+    versions.sort((a, b) => b.size - a.size);
+    return json(response, 200, { versions });
   }
 
   const versionUninstallMatch = matchRoute(url.pathname, '/api/versions/:id/uninstall');
@@ -596,6 +641,16 @@ async function handleApi(request, response, url) {
     const body = await readBody(request);
     return json(response, 201, { modpack: await modpacks.createModpack(body) });
   }
+  if (method === 'POST' && url.pathname === '/api/modpacks/import') {
+    const body = await readBody(request);
+    const modpack = await runExclusive('Import modpack', () => modpacks.importMrpack(body));
+    return json(response, 201, { modpack });
+  }
+  if (method === 'POST' && url.pathname === '/api/modpacks/import-modrinth') {
+    const body = await readBody(request);
+    const modpack = await runExclusive('Import Modrinth modpack', () => modpacks.importModrinthModpack(body));
+    return json(response, 201, { modpack });
+  }
 
   const modpackOne = matchRoute(url.pathname, '/api/modpacks/:id');
   if (modpackOne) {
@@ -625,8 +680,47 @@ async function handleApi(request, response, url) {
       const body = await readBody(request);
       if (!body.fileUrl || !body.fileName) throw new Error('fileUrl and fileName required');
       const entry = await runExclusive(`Install mod ${body.fileName}`, () => modpacks.addModToPack(modpackMods.id, body));
-      return json(response, 201, { mod: entry });
+      return json(response, 201, { mod: entry, dependenciesInstalled: entry.dependenciesInstalled || 0 });
     }
+  }
+
+  const modpackLocalMod = matchRoute(url.pathname, '/api/modpacks/:id/mods/local');
+  if (method === 'POST' && modpackLocalMod) {
+    const body = await readBody(request);
+    const entry = await runExclusive('Add local mod jar', () => modpacks.addLocalModToPack(modpackLocalMod.id, body));
+    return json(response, 201, { mod: entry });
+  }
+
+  const modpackShaders = matchRoute(url.pathname, '/api/modpacks/:id/shaderpacks');
+  if (modpackShaders) {
+    if (method === 'GET') return json(response, 200, { shaders: await modpacks.listShaderPacks(modpackShaders.id) });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const entry = await runExclusive(`Install shader ${body.fileName || ''}`, () => modpacks.addShaderPackToPack(modpackShaders.id, body));
+      return json(response, 201, { shader: entry });
+    }
+  }
+
+  const modpackShaderDel = matchRoute(url.pathname, '/api/modpacks/:packId/shaderpacks/:shaderId');
+  if (method === 'DELETE' && modpackShaderDel) {
+    const remaining = await modpacks.removeShaderPackFromPack(modpackShaderDel.packId, modpackShaderDel.shaderId);
+    return json(response, 200, { shaders: remaining });
+  }
+
+  const modpackResourcePacks = matchRoute(url.pathname, '/api/modpacks/:id/resourcepacks');
+  if (modpackResourcePacks) {
+    if (method === 'GET') return json(response, 200, { resourcepacks: await modpacks.listResourcePacks(modpackResourcePacks.id) });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const entry = await runExclusive(`Install resource pack ${body.fileName || ''}`, () => modpacks.addResourcePackToPack(modpackResourcePacks.id, body));
+      return json(response, 201, { resourcepack: entry });
+    }
+  }
+
+  const modpackResourceDel = matchRoute(url.pathname, '/api/modpacks/:packId/resourcepacks/:resourceId');
+  if (method === 'DELETE' && modpackResourceDel) {
+    const remaining = await modpacks.removeResourcePackFromPack(modpackResourceDel.packId, modpackResourceDel.resourceId);
+    return json(response, 200, { resourcepacks: remaining });
   }
 
   const modpackModDel = matchRoute(url.pathname, '/api/modpacks/:packId/mods/:modId');
@@ -670,29 +764,6 @@ async function handleApi(request, response, url) {
     return json(response, 200, { versions: await modrinth.getProjectVersions(mrVers.projectId, { loaders: loader ? [loader] : [], gameVersions: gameVersion ? [gameVersion] : [] }) });
   }
 
-  // ── CurseForge ────────────────────────────────────────────────
-  if (method === 'GET' && url.pathname === '/api/curseforge/search') {
-    const searchFilter = url.searchParams.get('q') || url.searchParams.get('searchFilter') || '';
-    const gameVersion = url.searchParams.get('gameVersion') || '';
-    const modLoaderType = url.searchParams.get('loader') || '';
-    const pageSize = Number(url.searchParams.get('limit') || 20);
-    const index = Number(url.searchParams.get('offset') || 0);
-    const data = await curseforge.searchMods({ searchFilter, gameVersion, modLoaderType, pageSize, index });
-    return json(response, 200, data);
-  }
-
-  const cfFiles = matchRoute(url.pathname, '/api/curseforge/mod/:id/files');
-  if (method === 'GET' && cfFiles) {
-    const gameVersion = url.searchParams.get('gameVersion') || '';
-    const modLoaderType = url.searchParams.get('loader') || '';
-    return json(response, 200, await curseforge.getModFiles(cfFiles.id, { gameVersion, modLoaderType }));
-  }
-
-  const cfMod = matchRoute(url.pathname, '/api/curseforge/mod/:id');
-  if (method === 'GET' && cfMod) {
-    return json(response, 200, await curseforge.getMod(cfMod.id));
-  }
-
   json(response, 404, { error: 'Not found' });
 }
 
@@ -703,7 +774,41 @@ function createServer() {
       if (url.pathname.startsWith('/api/')) await handleApi(request, response, url);
       else await serveStatic(request, response, url.pathname);
     } catch (error) {
-      json(response, 500, { error: error.message });
+      // Log the full error for debugging
+      console.error('Server error:', error);
+      
+      // Provide more detailed error information
+      const errorResponse = {
+        error: error.message || 'Internal server error',
+        code: error.code,
+        status: error.status
+      };
+      
+      // Check if this is a fetch-related error
+      if (error.message && (error.message.includes('Failed to fetch') || 
+                           error.message.includes('fetch') || 
+                           error.message.includes('network'))) {
+        errorResponse.type = 'NETWORK_ERROR';
+        errorResponse.hint = 'Check your internet connection or try again later.';
+      }
+      
+      // Check if this is a timeout error
+      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+        errorResponse.type = 'TIMEOUT_ERROR';
+        errorResponse.hint = 'The request timed out. Please check your connection and try again.';
+      }
+      
+      // Check if this is a JSON parsing error
+      if (error.name === 'SyntaxError' || error.message?.includes('JSON')) {
+        errorResponse.type = 'PARSE_ERROR';
+        errorResponse.hint = 'Failed to parse the response. The server may be down or returning invalid data.';
+      }
+      
+      // Add CORS headers to error responses
+      response.setHeader('Access-Control-Allow-Origin', '*');
+      response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, PATCH, OPTIONS');
+      
+      json(response, 500, errorResponse);
     }
   });
 }

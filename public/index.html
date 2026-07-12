@@ -126,26 +126,35 @@
       </div>
 
       <div class="page" id="page-modpacks">
-        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Create packs with any loader and install mods from Modrinth or CurseForge.</p></div><div class="heading-actions"><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
-        <div class="versions-layout">
-          <section class="card versions-list-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Modpacks</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="version-items" id="modpack-list"></div></section>
-          <section class="card versions-detail-panel" id="modpack-detail">
-            <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create a new pack or select one from the list.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
-            <div class="detail-content" id="modpack-content" style="display:none">
+        <div class="page-heading"><div><span class="section-eyebrow">MODDED</span><h1>Modpacks</h1><p>Browse Modrinth mods, modpacks, resource packs, and shader packs without leaving Amethyst.</p></div><div class="heading-actions"><button id="modpacks-import" class="button button-subtle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg><span>Import modpack</span></button><button id="modpacks-new" class="button primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New modpack</span></button><button id="modpacks-refresh" class="button button-quiet">↻ Refresh</button></div></div>
+        <section class="card modpack-picker-panel"><div class="panel-heading"><div><span class="section-eyebrow">YOUR PACKS</span><h2>Choose a modpack</h2></div><span class="panel-count" id="modpacks-count">0</span></div><div class="modpack-rail" id="modpack-list"></div></section>
+        <div class="modpack-split-layout">
+          <section class="card mod-browser-panel" aria-label="Mod selector">
+            <div class="panel-heading"><div><span class="section-eyebrow">MOD SELECTOR</span><h2>Download content</h2></div><span class="panel-icon">⌕</span></div>
+            <div class="mod-browser-controls">
+              <input id="mp-search" placeholder="Search Modrinth…" aria-label="Search Modrinth">
+              <select id="mp-project-type" aria-label="Content type"><option value="mod">Mods</option><option value="modpack">Modpacks</option><option value="resourcepack">Resource packs</option><option value="shader">Shader packs</option></select>
+              <button id="mp-search-btn" class="button button-quiet">Search</button>
+            </div>
+            <div id="mp-browse-info" class="muted mod-browser-info">Select a pack, then search for mods, resource packs, or shaders. Modpack results can create a new pack.</div>
+            <div id="mp-browse-results" class="mod-browser-results"></div>
+            <div id="mp-browse-pagination" class="mod-browser-pagination" style="display:none"></div>
+          </section>
+          <section class="card modpack-workspace-panel" id="modpack-detail" aria-label="Selected modpack">
+            <div class="detail-empty" id="modpack-empty"><div class="empty-glyph">◫</div><strong>No modpack selected</strong><p>Create, import, or select a pack.<br>Supports Fabric, Forge, NeoForge, Quilt, Vanilla.</p><button id="modpack-empty-new" class="button primary" style="margin-top:12px">Create modpack</button></div>
+            <div class="detail-content modpack-workspace" id="modpack-content" style="display:none">
               <div class="detail-head"><div><span class="section-eyebrow">MODPACK</span><div class="detail-title-row"><span class="detail-id" id="mp-name">—</span><span class="detail-badge" id="mp-badge-loader">vanilla</span><span class="detail-badge" id="mp-badge-mc">—</span></div><small id="mp-sub" class="muted"></small></div><span class="detail-cube">◫</span></div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap">
+              <p id="mp-description" class="modpack-description muted"></p>
+              <div class="modpack-actions">
                 <button id="mp-install" class="button primary"><span>Install</span></button>
                 <button id="mp-launch" class="button button-subtle"><span>Launch</span></button>
+                <button id="mp-add-jar" class="button button-subtle"><span>Add .jar</span></button>
                 <button id="mp-delete" class="button button-quiet" style="color:#ff7f9f">Delete</button>
               </div>
-              <div class="detail-rule"></div>
-              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="browse">Browse</button><button class="filter-tab" data-tab="settings">Settings</button></div>
-              <div id="mp-tab-mods"><div id="mp-mods-list" style="display:flex; flex-direction:column; gap:8px; margin-top:12px"></div></div>
-              <div id="mp-tab-browse" style="display:none">
-                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap"><input id="mp-search" placeholder="Search mods…" style="flex:1; min-width:180px"><select id="mp-source" style="width:140px"><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option></select><button id="mp-search-btn" class="button button-quiet">Search</button></div>
-                <div id="mp-browse-info" class="muted" style="font-size:.7rem; margin-top:8px"></div>
-                <div id="mp-browse-results" style="display:flex; flex-direction:column; gap:8px; margin-top:10px"></div>
-              </div>
+              <div class="filter-tabs" id="mp-tabs"><button class="filter-tab active" data-tab="mods">Mods</button><button class="filter-tab" data-tab="resourcepacks">Resource packs</button><button class="filter-tab" data-tab="shaders">Shaders</button><button class="filter-tab" data-tab="settings">Settings</button></div>
+              <div id="mp-tab-mods"><div id="mp-mods-list" class="mod-installed-list"></div></div>
+              <div id="mp-tab-resourcepacks" style="display:none"><div id="mp-resourcepacks-list" class="mod-installed-list"><span class="muted">Resource packs you install from the selector appear here.</span></div></div>
+              <div id="mp-tab-shaders" style="display:none"><div id="mp-shaders-list" class="mod-installed-list"><span class="muted">Shader packs you install from the selector appear here.</span></div></div>
               <div id="mp-tab-settings" style="display:none"><div class="detail-info" style="margin-top:12px"><div class="info-row"><span>NAME</span><strong id="mp-set-name">—</strong></div><div class="info-row"><span>MC VERSION</span><strong id="mp-set-mc">—</strong></div><div class="info-row"><span>LOADER</span><strong id="mp-set-loader">—</strong></div><div class="info-row"><span>LOADER VER</span><strong id="mp-set-loader-ver">—</strong></div><div class="info-row"><span>GAME DIR</span><strong id="mp-set-dir">—</strong></div><div class="info-row"><span>MODS DIR</span><strong id="mp-set-mods-dir">—</strong></div><div class="info-row"><span>CUSTOM ID</span><strong id="mp-set-custom">—</strong></div></div></div>
             </div>
           </section>
@@ -264,6 +273,16 @@
         </div>
       </div>
       <div class="modal-actions"><button id="drive-cancel" class="button button-subtle">Cancel</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="cleanup-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="cleanup-title">
+    <div class="modal" style="width:min(680px,100%)"><div class="modal-header"><div class="modal-icon"><span>◎</span></div><div><span class="modal-title" id="cleanup-title">Free up space</span><span class="modal-version">Largest installed versions first</span></div><button id="cleanup-modal-close" class="modal-dismiss" aria-label="Close">×</button></div>
+      <div class="modal-body" style="align-items:stretch; padding:0">
+        <div class="cleanup-copy">Amethyst could not finish because the drive appears to be out of space. Delete old versions below, then retry the install.</div>
+        <div id="cleanup-list" class="cleanup-list"><span class="muted">Scanning installed versions…</span></div>
+      </div>
+      <div class="modal-actions"><button id="cleanup-refresh" class="button button-quiet">Refresh sizes</button><button id="cleanup-cancel" class="button button-subtle">Close</button></div>
     </div>
   </div>
 

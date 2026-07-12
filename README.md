@@ -1,7 +1,4 @@
-# Amethyst <img src="https://raw.githubusercontent.com/MinLOL12/Amethyst/main/build/icon.png" width="30">
-
-[![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/MinLOL12/Amethyst) ![Coverage](https://img.shields.io/badge/coolometer-100%25-orange)
-###### The main branch may be outdated at points.
+# Amethyst
 
 Amethyst is a dark-purple Minecraft launcher built with Node.js and a
 **polished zero-build web UI**. The launcher runs locally, serves plain HTML,
@@ -36,7 +33,6 @@ Amethyst binds to `127.0.0.1` on an available port and opens the launcher in
 your browser. Browser mode is the default—no extra `server` flag is required.
 The terminal only hosts the local backend and must remain open while the
 launcher is running.
-###### Amethyst will not work on Node.js versions that are older than Node.js 18.
 
 Amethyst always prints the launcher URL on its own line. If the browser cannot
 be opened automatically (for example, over SSH or on a headless desktop), click

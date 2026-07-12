@@ -5,7 +5,7 @@ const MODRINTH_API = 'https://api.modrinth.com/v2';
 function buildFacets({ loaders, gameVersions, categories, projectType }) {
   const facets = [];
   if (projectType) facets.push([`project_type:${projectType}`]);
-  if (loaders && loaders.length) facets.push(loaders.map(l => `categories:${l}`));
+  if ((!projectType || projectType === 'mod' || projectType === 'modpack') && loaders && loaders.length) facets.push(loaders.map(l => `categories:${l}`));
   if (gameVersions && gameVersions.length) facets.push(gameVersions.map(v => `versions:${v}`));
   if (categories && categories.length) facets.push(categories.map(c => `categories:${c}`));
   // Ensure we only search mods by default? Caller controls
@@ -17,7 +17,7 @@ async function searchProjects({ query = '', loaders = [], gameVersions = [], cat
   if (query) params.set('query', query);
   const facets = [];
   if (projectType) facets.push([`project_type:${projectType}`]);
-  if (loaders && loaders.length) {
+  if ((!projectType || projectType === 'mod' || projectType === 'modpack') && loaders && loaders.length) {
     // loaders facet uses "categories" for loader? Actually modrinth uses: categories:loader? According to docs, loader is categories as well. Or use 'categories:%loader' indeed, but also there's 'categories' includes loaders. We'll use categories facet.
     // However newer docs use 'categories:forge' etc. So we add.
     facets.push(loaders.map(l => `categories:${l}`));
@@ -35,37 +35,67 @@ async function searchProjects({ query = '', loaders = [], gameVersions = [], cat
 
   const url = `${MODRINTH_API}/search?${params.toString()}`;
   progressBus.emitEvent('status', { message: `Searching Modrinth: ${query}` });
-  const data = await fetchJson(url, `Modrinth search ${query}`);
-  return data; // { hits: [], offset, limit, total_hits }
+  try {
+    const data = await fetchJson(url, `Modrinth search ${query}`);
+    return data; // { hits: [], offset, limit, total_hits }
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Modrinth search failed: ${error.message}` });
+    throw error;
+  }
 }
 
 async function getProject(projectId) {
-  const url = `${MODRINTH_API}/project/${encodeURIComponent(projectId)}`;
-  return fetchJson(url, `Modrinth project ${projectId}`);
+  try {
+    const url = `${MODRINTH_API}/project/${encodeURIComponent(projectId)}`;
+    return await fetchJson(url, `Modrinth project ${projectId}`);
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Modrinth project ${projectId}: ${error.message}` });
+    throw error;
+  }
 }
 
 async function getProjectVersions(projectId, { loaders = [], gameVersions = [] } = {}) {
-  const params = new URLSearchParams();
-  if (loaders.length) params.set('loaders', JSON.stringify(loaders));
-  if (gameVersions.length) params.set('game_versions', JSON.stringify(gameVersions));
-  const qs = params.toString() ? `?${params}` : '';
-  const url = `${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version${qs}`;
-  return fetchJson(url, `Modrinth versions ${projectId}`);
+  try {
+    const params = new URLSearchParams();
+    if (loaders.length) params.set('loaders', JSON.stringify(loaders));
+    if (gameVersions.length) params.set('game_versions', JSON.stringify(gameVersions));
+    const qs = params.toString() ? `?${params}` : '';
+    const url = `${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version${qs}`;
+    return await fetchJson(url, `Modrinth versions ${projectId}`);
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Modrinth project versions for ${projectId}: ${error.message}` });
+    throw error;
+  }
 }
 
 async function getVersion(versionId) {
-  const url = `${MODRINTH_API}/version/${encodeURIComponent(versionId)}`;
-  return fetchJson(url, `Modrinth version ${versionId}`);
+  try {
+    const url = `${MODRINTH_API}/version/${encodeURIComponent(versionId)}`;
+    return await fetchJson(url, `Modrinth version ${versionId}`);
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Modrinth version ${versionId}: ${error.message}` });
+    throw error;
+  }
 }
 
 async function getLoaderTags() {
-  const url = `${MODRINTH_API}/tag/loader`;
-  try { return await fetchJson(url, 'Modrinth loader tags'); } catch { return []; }
+  try {
+    const url = `${MODRINTH_API}/tag/loader`;
+    return await fetchJson(url, 'Modrinth loader tags');
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Modrinth loader tags: ${error.message}` });
+    return [];
+  }
 }
 
 async function getGameVersionTags() {
-  const url = `${MODRINTH_API}/tag/game_version`;
-  try { return await fetchJson(url, 'Modrinth game version tags'); } catch { return []; }
+  try {
+    const url = `${MODRINTH_API}/tag/game_version`;
+    return await fetchJson(url, 'Modrinth game version tags');
+  } catch (error) {
+    progressBus.emitEvent('status', { message: `Failed to fetch Modrinth game version tags: ${error.message}` });
+    return [];
+  }
 }
 
 module.exports = {

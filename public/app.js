@@ -19,7 +19,6 @@ const state = {
   filterText: '',
   pendingVersionId: '',
   toastTimer: null,
-  curseforgeEnabled: false,
   microsoftLoginId: null,
   microsoftLoginTimer: null,
   skinAccountId: null,
@@ -28,6 +27,14 @@ const state = {
   loaderVersions: {},
   loaderRequestId: 0,
   gameRunning: false,
+  onlineWasOnline: false,
+  pendingRefresh: false,
+  lastFetchError: null,
+  retryCount: 0,
+  modSearchPage: 1,
+  modSearchQuery: '',
+  modSearchType: 'mod',
+  modSearchTotalHits: 0
 };
 
 const pageLabels = {
@@ -42,6 +49,41 @@ function escapeHtml(value = '') {
   const div = document.createElement('div');
   div.textContent = String(value);
   return div.innerHTML;
+}
+
+function formatBytes(bytes = 0) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+  return `${size >= 10 ? size.toFixed(1) : size.toFixed(2)} ${units[unit]}`;
+}
+
+function formatDate(value) {
+  if (!value) return 'Unknown date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).split('T')[0] || 'Unknown date';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderMarkdownSafe(markdown = '') {
+  let html = escapeHtml(markdown || 'No description provided.');
+  html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+    .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+    .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+    .replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" loading="lazy">')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/(?:^|\n)-\s+(.+)(?=\n|$)/g, '<br>• $1')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  return `<p>${html}</p>`;
+}
+
+function selectedModpack() {
+  return state.modpacks.find(m => m.id === state.selectedModpackId) || null;
 }
 
 function log(message, level = 'info') {
@@ -62,14 +104,58 @@ function notify(message, level = 'success') {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-    body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-  return data;
+  try {
+    const response = await fetch(path, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+      body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+    });
+    
+    // Handle network errors and failed responses
+    if (!response.ok) {
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const data = await response.json().catch(() => ({}));
+        errorMsg = data.error || data.message || errorMsg;
+        if (data.hint) errorMsg += ` - ${data.hint}`;
+        if (data.type === 'NETWORK_ERROR') {
+          errorMsg = 'Network error: ' + errorMsg;
+        } else if (data.type === 'TIMEOUT_ERROR') {
+          errorMsg = 'Request timed out: ' + errorMsg;
+        } else if (data.type === 'PARSE_ERROR') {
+          errorMsg = 'Data parse error: ' + errorMsg;
+        }
+      } catch (_) {
+        // Couldn't parse error response, use status
+      }
+      
+      const error = new Error(errorMsg);
+      error.status = response.status;
+      throw error;
+    }
+    
+    const data = await response.json().catch(() => ({}));
+    return data;
+  } catch (error) {
+    // Handle fetch errors (network issues, CORS, etc.)
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      const enhancedError = new Error('Network error: Failed to connect to the server. Check if the backend is running and your internet connection is active.');
+      enhancedError.status = 0;
+      enhancedError.type = 'NETWORK_ERROR';
+      throw enhancedError;
+    }
+    
+    // Handle timeout errors
+    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+      const enhancedError = new Error('Request timed out. Please check your connection and try again.');
+      enhancedError.status = error.status || 0;
+      enhancedError.type = 'TIMEOUT_ERROR';
+      throw enhancedError;
+    }
+    
+    // Re-throw the original error
+    throw error;
+  }
 }
 
 function setProgress(percent, text) {
@@ -919,7 +1005,9 @@ function showModpackDetail(mp) {
   if (empty) empty.style.display = 'none';
   if (content) content.style.display = 'flex';
   $('#mp-name').textContent = mp.name;
-  $('#mp-sub').textContent = `${mp.minecraftVersion} • created ${mp.createdAt?.split('T')[0]||''}`;
+  $('#mp-sub').textContent = `${mp.minecraftVersion} • created ${formatDate(mp.createdAt)}`;
+  const descEl = $('#mp-description');
+  if (descEl) descEl.textContent = mp.description || 'No description yet.';
   $('#mp-badge-loader').textContent = mp.loader;
   $('#mp-badge-loader').className = `detail-badge ${mp.loader}`;
   $('#mp-badge-mc').textContent = mp.minecraftVersion;
@@ -931,6 +1019,8 @@ function showModpackDetail(mp) {
   $('#mp-set-mods-dir').textContent = mp.modsDir || (mp.gameDir ? `${mp.gameDir.replace(/[\\/]$/, '')}/mods` : '—');
   $('#mp-set-custom').textContent = mp.customVersionId || 'not installed';
   loadModpackMods(mp.id);
+  loadModpackShaders(mp.id);
+  loadModpackResourcePacks(mp.id);
 }
 
 async function loadModpackMods(id) {
@@ -941,7 +1031,7 @@ async function loadModpackMods(id) {
     const { mods } = await api(`/api/modpacks/${encodeURIComponent(id)}/mods`);
     listEl.innerHTML = '';
     if (!mods.length) {
-      listEl.innerHTML = '<div class="account-empty" style="min-height:120px"><div class="empty-glyph">◫</div><strong>No mods yet</strong><p>Use Browse tab to add mods from Modrinth or CurseForge.</p></div>';
+      listEl.innerHTML = '<div class="account-empty" style="min-height:120px"><div class="empty-glyph">◫</div><strong>No mods yet</strong><p>Use the Modrinth selector on the left or Add .jar for local creator builds.</p></div>';
       return;
     }
     for (const m of mods) {
@@ -952,6 +1042,60 @@ async function loadModpackMods(id) {
         if (!confirm(`Remove ${m.fileName}?`)) return;
         await api(`/api/modpacks/${encodeURIComponent(id)}/mods/${encodeURIComponent(m.id)}`, { method: 'DELETE' });
         loadModpackMods(id);
+      });
+      listEl.append(row);
+    }
+  } catch (e) {
+    listEl.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+async function loadModpackShaders(id) {
+  const listEl = $('#mp-shaders-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<span class="muted">Loading shader packs…</span>';
+  try {
+    const { shaders } = await api(`/api/modpacks/${encodeURIComponent(id)}/shaderpacks`);
+    listEl.innerHTML = '';
+    if (!shaders.length) {
+      listEl.innerHTML = '<div class="account-empty" style="min-height:120px"><div class="empty-glyph">◌</div><strong>No shader packs yet</strong><p>Search Shader packs on the left and install one into this pack.</p></div>';
+      return;
+    }
+    for (const shader of shaders) {
+      const row = document.createElement('div');
+      row.className = 'mod-installed';
+      row.innerHTML = `<div style="flex:1; min-width:0"><div style="font-weight:600; font-size:.82rem">${escapeHtml(shader.title || shader.fileName)}</div><div class="muted" style="font-family:monospace; font-size:.68rem">${escapeHtml(shader.fileName)} • ${formatBytes(shader.sizeOnDisk || shader.size || 0)}${shader.installed === false ? ' • MISSING' : ''}</div></div><button class="button button-quiet" data-remove>Remove</button>`;
+      row.querySelector('[data-remove]').addEventListener('click', async () => {
+        if (!confirm(`Remove ${shader.fileName}?`)) return;
+        await api(`/api/modpacks/${encodeURIComponent(id)}/shaderpacks/${encodeURIComponent(shader.id || shader.fileName)}`, { method: 'DELETE' });
+        loadModpackShaders(id);
+      });
+      listEl.append(row);
+    }
+  } catch (e) {
+    listEl.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+async function loadModpackResourcePacks(id) {
+  const listEl = $('#mp-resourcepacks-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<span class="muted">Loading resource packs…</span>';
+  try {
+    const { resourcepacks } = await api(`/api/modpacks/${encodeURIComponent(id)}/resourcepacks`);
+    listEl.innerHTML = '';
+    if (!resourcepacks.length) {
+      listEl.innerHTML = '<div class="account-empty" style="min-height:120px"><div class="empty-glyph">🎨</div><strong>No resource packs yet</strong><p>Search Resource packs on the left and install one into this pack.</p></div>';
+      return;
+    }
+    for (const rp of resourcepacks) {
+      const row = document.createElement('div');
+      row.className = 'mod-installed';
+      row.innerHTML = `<div style="flex:1; min-width:0"><div style="font-weight:600; font-size:.82rem">${escapeHtml(rp.title || rp.fileName)}</div><div class="muted" style="font-family:monospace; font-size:.68rem">${escapeHtml(rp.fileName)} • ${formatBytes(rp.sizeOnDisk || rp.size || 0)}${rp.installed === false ? ' • MISSING' : ''}</div></div><button class="button button-quiet" data-remove>Remove</button>`;
+      row.querySelector('[data-remove]').addEventListener('click', async () => {
+        if (!confirm(`Remove ${rp.fileName}?`)) return;
+        await api(`/api/modpacks/${encodeURIComponent(id)}/resourcepacks/${encodeURIComponent(rp.id || rp.fileName)}`, { method: 'DELETE' });
+        loadModpackResourcePacks(id);
       });
       listEl.append(row);
     }
@@ -994,111 +1138,284 @@ async function installModFile(packId, body, button, resultContainer) {
   const original = button.textContent;
   button.disabled = true;
   button.textContent = 'Installing…';
+  const mp = selectedModpack();
   try {
-    const { mod } = await api(`/api/modpacks/${encodeURIComponent(packId)}/mods`, { method:'POST', body });
+    const { mod, dependenciesInstalled = 0 } = await api(`/api/modpacks/${encodeURIComponent(packId)}/mods`, { method:'POST', body: { ...body, gameVersion: mp?.minecraftVersion, loader: mp?.loader } });
     await loadModpackMods(packId);
-    resultContainer.innerHTML = `<span style="color:var(--green)">Installed ${escapeHtml(mod.fileName)} in the pack's mods folder.</span>`;
-    notify(`${mod.title || mod.fileName} installed.`);
+    if (resultContainer) resultContainer.innerHTML = `<span style="color:var(--green)">Installed ${escapeHtml(mod.fileName)}${dependenciesInstalled ? ` with ${dependenciesInstalled} dependenc${dependenciesInstalled === 1 ? 'y' : 'ies'}` : ''}.</span>`;
+    notify(`${mod.title || mod.fileName} installed${dependenciesInstalled ? ` + ${dependenciesInstalled} dependencies` : ''}.`);
   } catch (error) {
     button.disabled = false;
     button.textContent = original;
     notify(error.message, 'error');
+    if (isNoSpaceError(error)) showCleanupModal();
     throw error;
   }
 }
 
-async function doModSearch() {
+async function doModSearch(options = {}) {
   const query = $('#mp-search')?.value.trim() || '';
-  const source = $('#mp-source')?.value || 'modrinth';
-  const mpId = state.selectedModpackId;
-  if (!mpId) { notify('Select a modpack first', 'error'); return; }
-  const mp = state.modpacks.find(m => m.id === mpId);
-  if (!mp) return;
+  const projectType = $('#mp-project-type')?.value || 'mod';
+  const mp = selectedModpack();
   const resultsEl = $('#mp-browse-results');
   const infoEl = $('#mp-browse-info');
+  const paginationEl = $('#mp-browse-pagination');
   if (!resultsEl) return;
-  resultsEl.innerHTML = '<span class="muted">Searching…</span>';
+
+  if ((projectType === 'mod' || projectType === 'shader' || projectType === 'resourcepack') && !mp) {
+    notify('Select a modpack before installing mods, resource packs, or shader packs.', 'error');
+  }
+
+  if (typeof options.page === 'number') {
+    state.modSearchPage = Math.max(1, options.page);
+  } else if (query !== state.modSearchQuery || projectType !== state.modSearchType || options.resetPage) {
+    state.modSearchPage = 1;
+  }
+  state.modSearchQuery = query;
+  state.modSearchType = projectType;
+
+  const limit = 20;
+  const offset = (state.modSearchPage - 1) * limit;
+
+  resultsEl.innerHTML = '<span class="muted">Searching Modrinth…</span>';
   if (infoEl) infoEl.textContent = '';
+  if (paginationEl) paginationEl.style.display = 'none';
+
   try {
-    if (source === 'modrinth') {
-      const params = new URLSearchParams({ q: query, loader: mp.loader === 'vanilla' ? '' : mp.loader, gameVersion: mp.minecraftVersion, limit: '20' });
-      const data = await api(`/api/modrinth/search?${params.toString()}`);
-      const hits = data.hits || [];
-      resultsEl.innerHTML = '';
-      if (!hits.length) { resultsEl.innerHTML = '<div class="muted">No results</div>'; return; }
-      for (const hit of hits) {
-        const div = document.createElement('div');
-        div.className = 'mod-item';
-        div.innerHTML = `${hit.icon_url ? `<img src="${escapeHtml(hit.icon_url)}" alt="">` : `<div style="width:40px;height:40px;border-radius:8px;background:rgba(255,255,255,.06)"></div>`}<div style="flex:1; min-width:0"><div style="font-weight:600; font-size:.85rem">${escapeHtml(hit.title)}</div><div class="muted" style="font-size:.7rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(hit.description||'')}</div><div class="muted" style="font-size:.64rem; margin-top:4px">${escapeHtml(hit.author||'')} · ${hit.downloads||0} downloads</div><div class="mod-versions" style="display:none; flex-direction:column; margin-top:8px"></div></div><div><button class="button button-quiet" data-show>Versions</button></div>`;
-        const versEl = div.querySelector('.mod-versions');
-        const btn = div.querySelector('[data-show]');
-        btn.addEventListener('click', async () => {
-          if (versEl.style.display === 'none') {
-            versEl.style.display = 'flex'; versEl.innerHTML = '<span class="muted">Loading…</span>';
-            try {
-              const vData = await api(`/api/modrinth/project/${encodeURIComponent(hit.project_id)}/versions?loader=${encodeURIComponent(mp.loader!=='vanilla'?mp.loader:'')}&gameVersion=${encodeURIComponent(mp.minecraftVersion)}`);
-              const versions = vData.versions || [];
-              versEl.innerHTML = '';
-              if (!versions.length) { versEl.innerHTML = '<span class="muted">No compatible versions</span>'; return; }
-              for (const ver of versions.slice(0, 10)) {
-                const file = ver.files?.find(f=>f.primary) || ver.files?.[0]; if (!file) continue;
-                const row = document.createElement('div'); row.className='mod-ver';
-                row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name||'')}</div><div class="muted" style="font-size:.6rem">${(ver.loaders||[]).join(', ')} · ${escapeHtml((ver.game_versions||[]).join(', ').slice(0,60))}</div></div><button class="button primary" style="min-height:28px; font-size:.68rem">Install</button>`;
-                row.querySelector('button').addEventListener('click', async (event) => {
-                  const body = { source:'modrinth', projectId:hit.project_id, projectSlug:hit.slug||hit.project_id, title:hit.title, versionId:ver.id, fileName:file.filename, fileUrl:file.url, size:file.size };
-                  await installModFile(mpId, body, event.currentTarget, versEl).catch((error) => {
-                    versEl.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
-                  });
-                });
-                versEl.append(row);
-              }
-            } catch (e) { versEl.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`; }
-          } else { versEl.style.display='none'; }
-        });
-        resultsEl.append(div);
-      }
-      if (infoEl) infoEl.textContent = `${data.total_hits||hits.length} results`;
-    } else {
-      if (!state.curseforgeEnabled) { resultsEl.innerHTML = '<div class="muted">CurseForge API key not configured. Set CURSEFORGE_API_KEY env var. Modrinth works without key.</div>'; return; }
-      const params = new URLSearchParams({ q: query, gameVersion: mp.minecraftVersion, loader: mp.loader==='vanilla'?'':mp.loader, limit:'20' });
-      const data = await api(`/api/curseforge/search?${params.toString()}`);
-      const mods = data.data || [];
-      resultsEl.innerHTML = '';
-      if (!mods.length) { resultsEl.innerHTML = '<div class="muted">No results</div>'; return; }
-      for (const mod of mods) {
-        const div = document.createElement('div'); div.className='mod-item';
-        const icon = mod.logo?.thumbnailUrl || mod.logo?.url || '';
-        div.innerHTML = `${icon ? `<img src="${escapeHtml(icon)}" alt="">` : `<div style="width:40px;height:40px;background:rgba(255,255,255,.06);border-radius:8px"></div>`}<div style="flex:1; min-width:0"><div style="font-weight:600">${escapeHtml(mod.name)}</div><div class="muted" style="font-size:.7rem">${escapeHtml(mod.summary||'')}</div><div class="mod-versions" style="display:none; flex-direction:column; margin-top:8px"></div></div><div><button class="button button-quiet" data-show>Versions</button></div>`;
-        const versEl = div.querySelector('.mod-versions'); const btn = div.querySelector('[data-show]');
-        btn.addEventListener('click', async () => {
-          if (versEl.style.display === 'none') {
-            versEl.style.display='flex'; versEl.innerHTML='<span class="muted">Loading files…</span>';
-            try {
-              const fData = await api(`/api/curseforge/mod/${encodeURIComponent(mod.id)}/files?gameVersion=${encodeURIComponent(mp.minecraftVersion)}&loader=${encodeURIComponent(mp.loader!=='vanilla'?mp.loader:'')}`);
-              const files = fData.data || [];
-              versEl.innerHTML='';
-              if (!files.length) { versEl.innerHTML='<span class="muted">No compatible files</span>'; return; }
-              for (const file of files.slice(0,10)) {
-                const row = document.createElement('div'); row.className='mod-ver';
-                row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(file.displayName)}</div><div class="muted" style="font-size:.6rem">${escapeHtml((file.gameVersions||[]).join(', '))}</div></div><button class="button primary" style="min-height:28px">Install</button>`;
-                row.querySelector('button').addEventListener('click', async (event) => {
-                  if (!file.downloadUrl) { alert('No download URL (CurseForge may block). Try another file.'); return; }
-                  const body = { source:'curseforge', projectId:String(mod.id), projectSlug:mod.slug||String(mod.id), title:mod.name, versionId:String(file.id), fileName:file.fileName, fileUrl:file.downloadUrl };
-                  await installModFile(mpId, body, event.currentTarget, versEl).catch((error) => {
-                    versEl.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
-                  });
-                });
-                versEl.append(row);
-              }
-            } catch (e) { versEl.innerHTML=`<span style="color:var(--red)">${escapeHtml(e.message)}</span>`; }
-          } else { versEl.style.display='none'; }
-        });
-        resultsEl.append(div);
-      }
-      if (infoEl) infoEl.textContent = `${data.pagination?.totalCount||mods.length} results`;
+    const loader = (projectType === 'mod' || projectType === 'modpack') && mp?.loader && mp.loader !== 'vanilla' ? mp.loader : '';
+    const gameVersion = (projectType === 'mod' || projectType === 'shader' || projectType === 'resourcepack' || projectType === 'modpack') ? (mp?.minecraftVersion || '') : '';
+    const params = new URLSearchParams({ q: query, loader: loader || '', gameVersion, limit: String(limit), offset: String(offset), projectType });
+    const data = await api(`/api/modrinth/search?${params.toString()}`);
+    const hits = data.hits || [];
+    const totalHits = Number(data.total_hits || hits.length || 0);
+    state.modSearchTotalHits = totalHits;
+
+    resultsEl.innerHTML = '';
+    if (!hits.length) {
+      resultsEl.innerHTML = '<div class="muted">No Modrinth results found.</div>';
+      renderModSearchPagination(0, limit);
+      return;
     }
+    for (const hit of hits) renderModrinthHit(hit, projectType, resultsEl);
+    resultsEl.scrollTop = 0;
+    const typeLabel = projectType === 'shader' ? 'shader pack' : projectType === 'resourcepack' ? 'resource pack' : projectType;
+    if (infoEl) {
+      const startItem = offset + 1;
+      const endItem = Math.min(offset + hits.length, totalHits);
+      infoEl.textContent = `${totalHits.toLocaleString()} Modrinth ${typeLabel} results (showing ${startItem}-${endItem})`;
+    }
+    renderModSearchPagination(totalHits, limit);
   } catch (e) {
     resultsEl.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
+    if (paginationEl) paginationEl.style.display = 'none';
+  }
+}
+
+function renderModSearchPagination(totalHits, limit) {
+  const paginationEl = $('#mp-browse-pagination');
+  if (!paginationEl) return;
+  const totalPages = Math.ceil(totalHits / limit) || 1;
+  if (totalPages <= 1) {
+    paginationEl.style.display = 'none';
+    paginationEl.innerHTML = '';
+    return;
+  }
+  paginationEl.style.display = 'flex';
+  
+  const currentPage = state.modSearchPage;
+  
+  const pages = [];
+  const maxButtons = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  if (endPage - startPage + 1 < maxButtons) {
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+
+  for (let p = startPage; p <= endPage; p++) {
+    pages.push(p);
+  }
+
+  let pagesHtml = '';
+  if (startPage > 1) {
+    pagesHtml += `<button class="button button-quiet page-btn" data-page="1">1</button>`;
+    if (startPage > 2) pagesHtml += `<span class="muted" style="padding:0 4px">…</span>`;
+  }
+  for (const p of pages) {
+    if (p === currentPage) {
+      pagesHtml += `<button class="button primary page-btn active" data-page="${p}" disabled style="cursor:default">${p}</button>`;
+    } else {
+      pagesHtml += `<button class="button button-quiet page-btn" data-page="${p}">${p}</button>`;
+    }
+  }
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) pagesHtml += `<span class="muted" style="padding:0 4px">…</span>`;
+    pagesHtml += `<button class="button button-quiet page-btn" data-page="${totalPages}">${totalPages}</button>`;
+  }
+
+  paginationEl.innerHTML = `
+    <div class="pagination-info" style="font-size:.78rem">Page <strong>${currentPage}</strong> of <strong>${totalPages.toLocaleString()}</strong></div>
+    <div class="pagination-controls" style="display:flex; align-items:center; gap:4px">
+      <button class="button button-quiet" id="mp-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>← Prev</button>
+      ${pagesHtml}
+      <button class="button button-quiet" id="mp-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>
+    </div>
+  `;
+
+  paginationEl.querySelector('#mp-page-prev')?.addEventListener('click', () => {
+    if (state.modSearchPage > 1) doModSearch({ page: state.modSearchPage - 1 });
+  });
+  paginationEl.querySelector('#mp-page-next')?.addEventListener('click', () => {
+    if (state.modSearchPage < totalPages) doModSearch({ page: state.modSearchPage + 1 });
+  });
+  paginationEl.querySelectorAll('.page-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pageNum = Number(btn.dataset.page);
+      if (pageNum && pageNum !== state.modSearchPage) {
+        doModSearch({ page: pageNum });
+      }
+    });
+  });
+}
+
+function renderModrinthHit(hit, projectType, resultsEl) {
+  const div = document.createElement('div');
+  div.className = 'mod-item';
+  const icon = hit.icon_url ? `<img class="mod-item-icon" src="${escapeHtml(hit.icon_url)}" alt="">` : '<div class="mod-item-icon"></div>';
+  const created = hit.date_created || hit.published;
+  const updated = hit.date_modified || hit.updated;
+  div.innerHTML = `${icon}<div class="mod-item-body"><div class="mod-item-head"><div><div class="mod-item-title">${escapeHtml(hit.title)}</div><div class="mod-item-meta">By ${escapeHtml(hit.author || 'Unknown creator')} • Created ${formatDate(created)}${updated ? ` • Updated ${formatDate(updated)}` : ''} • ${Number(hit.downloads || 0).toLocaleString()} downloads</div></div><button class="button button-quiet" data-details>Details</button></div><div class="mod-item-summary">${escapeHtml(hit.description || '')}</div><div class="mod-project-details"><div class="muted">Loading details…</div></div></div>`;
+  const details = div.querySelector('.mod-project-details');
+  const button = div.querySelector('[data-details]');
+  button.addEventListener('click', async () => {
+    if (details.classList.contains('open')) { details.classList.remove('open'); return; }
+    details.classList.add('open');
+    await loadModrinthDetails(hit, projectType, details);
+  });
+  resultsEl.append(div);
+}
+
+async function loadModrinthDetails(hit, projectType, detailsEl) {
+  detailsEl.innerHTML = '<span class="muted">Loading description and versions…</span>';
+  try {
+    const [project, versionsData] = await Promise.all([
+      api(`/api/modrinth/project/${encodeURIComponent(hit.project_id)}`),
+      loadCompatibleVersions(hit.project_id, projectType)
+    ]);
+    const versions = versionsData.versions || [];
+    const author = hit.author || project.team || 'Unknown creator';
+    detailsEl.innerHTML = `<div class="mod-item-meta"><strong>Creator:</strong> ${escapeHtml(author)} • <strong>Created:</strong> ${formatDate(project.published || hit.date_created)} • <strong>Project:</strong> ${escapeHtml(project.project_type || projectType)}</div><div class="mod-description">${renderMarkdownSafe(project.body || hit.description || '')}</div><div><span class="section-eyebrow">COMPATIBLE DOWNLOADS</span><div class="mod-version-list"></div></div>`;
+    const list = detailsEl.querySelector('.mod-version-list');
+    if (!versions.length) {
+      list.innerHTML = '<span class="muted">No compatible files found for the selected pack/version.</span>';
+      return;
+    }
+    for (const ver of versions.slice(0, 12)) {
+      renderModrinthVersionRow(hit, ver, projectType, list);
+    }
+  } catch (error) {
+    detailsEl.innerHTML = `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+async function loadCompatibleVersions(projectId, projectType) {
+  const mp = selectedModpack();
+  const params = new URLSearchParams();
+  if ((projectType === 'mod' || projectType === 'modpack') && mp?.loader && mp.loader !== 'vanilla') params.set('loader', mp.loader);
+  if ((projectType === 'mod' || projectType === 'shader' || projectType === 'resourcepack' || projectType === 'modpack') && mp?.minecraftVersion) params.set('gameVersion', mp.minecraftVersion);
+  return api(`/api/modrinth/project/${encodeURIComponent(projectId)}/versions?${params.toString()}`);
+}
+
+function renderModrinthVersionRow(hit, ver, projectType, list) {
+  const file = ver.files?.find(f => f.primary) || ver.files?.[0];
+  if (!file) return;
+  const row = document.createElement('div');
+  row.className = 'mod-ver';
+  const required = (ver.dependencies || []).filter(dep => dep.dependency_type === 'required').length;
+  let label = 'Install';
+  if (projectType === 'modpack') label = 'Install pack';
+  if (projectType === 'shader') label = 'Install shader';
+  if (projectType === 'resourcepack') label = 'Install resource pack';
+  row.innerHTML = `<div><div class="mod-ver-name">${escapeHtml(ver.version_number)} — ${escapeHtml(ver.name || '')}</div><div class="muted" style="font-size:.6rem">${escapeHtml((ver.loaders || []).join(', ') || 'any loader')} · ${escapeHtml((ver.game_versions || []).join(', ').slice(0, 90))} · ${formatBytes(file.size || 0)}</div>${required ? `<div class="mod-dependency-note">${required} required dependenc${required === 1 ? 'y' : 'ies'} will auto-install</div>` : ''}</div><button class="button primary" style="min-height:28px; font-size:.68rem">${label}</button>`;
+  row.querySelector('button').addEventListener('click', async (event) => {
+    if (projectType === 'mod') {
+      const mpId = state.selectedModpackId;
+      if (!mpId) { notify('Select a modpack first', 'error'); return; }
+      const body = { source:'modrinth', projectId:hit.project_id, projectSlug:hit.slug || hit.project_id, title:hit.title, versionId:ver.id, fileName:file.filename, fileUrl:file.url, size:file.size, autoInstallDependencies:true };
+      await installModFile(mpId, body, event.currentTarget, list).catch((error) => {
+        list.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+      });
+    } else if (projectType === 'shader') {
+      await installShaderPack(hit, ver, file, event.currentTarget, list).catch((error) => {
+        list.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+      });
+    } else if (projectType === 'resourcepack') {
+      await installResourcePack(hit, ver, file, event.currentTarget, list).catch((error) => {
+        list.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+      });
+    } else {
+      await installModrinthModpack(hit, ver, event.currentTarget).catch((error) => {
+        list.insertAdjacentHTML('beforeend', `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`);
+      });
+    }
+  });
+  list.append(row);
+}
+
+async function installResourcePack(hit, ver, file, button, resultContainer) {
+  const mpId = state.selectedModpackId;
+  if (!mpId) { notify('Select a modpack first', 'error'); return; }
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Installing…';
+  try {
+    const body = { source:'modrinth', projectId:hit.project_id, projectSlug:hit.slug || hit.project_id, title:hit.title, versionId:ver.id, fileName:file.filename, fileUrl:file.url, size:file.size };
+    const { resourcepack } = await api(`/api/modpacks/${encodeURIComponent(mpId)}/resourcepacks`, { method:'POST', body });
+    await loadModpackResourcePacks(mpId);
+    resultContainer.innerHTML = `<span style="color:var(--green)">Installed resource pack ${escapeHtml(resourcepack.fileName)}.</span>`;
+    notify(`${resourcepack.title || resourcepack.fileName} installed.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = original;
+    if (isNoSpaceError(error)) showCleanupModal();
+    throw error;
+  }
+}
+
+async function installShaderPack(hit, ver, file, button, resultContainer) {
+  const mpId = state.selectedModpackId;
+  if (!mpId) { notify('Select a modpack first', 'error'); return; }
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Installing…';
+  try {
+    const body = { source:'modrinth', projectId:hit.project_id, projectSlug:hit.slug || hit.project_id, title:hit.title, versionId:ver.id, fileName:file.filename, fileUrl:file.url, size:file.size };
+    const { shader } = await api(`/api/modpacks/${encodeURIComponent(mpId)}/shaderpacks`, { method:'POST', body });
+    await loadModpackShaders(mpId);
+    resultContainer.innerHTML = `<span style="color:var(--green)">Installed shader pack ${escapeHtml(shader.fileName)}.</span>`;
+    notify(`${shader.title || shader.fileName} installed.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = original;
+    if (isNoSpaceError(error)) showCleanupModal();
+    throw error;
+  }
+}
+
+async function installModrinthModpack(hit, ver, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Importing…';
+  try {
+    const { modpack } = await api('/api/modpacks/import-modrinth', { method:'POST', body:{ projectId: hit.project_id, versionId: ver.id } });
+    await loadModpacks();
+    selectModpack(modpack.id);
+    notify(`Imported ${modpack.name}.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = original;
+    if (isNoSpaceError(error)) showCleanupModal();
+    throw error;
   }
 }
 
@@ -1109,7 +1426,6 @@ async function loadStatus() {
     $('#app-version').textContent = data.version || '0.1.0';
     $('#about-version').textContent = data.version || '0.1.0';
     $('#settings-data-dir').textContent = data.dataRoot || '—';
-    state.curseforgeEnabled = !!data.curseforgeEnabled;
     setOnline(true);
   } catch { setOnline(false); }
 }
@@ -1119,6 +1435,22 @@ function setOnline(online) {
   $('#status-text').textContent = online ? 'Connected' : 'Disconnected';
   $('#about-backend-status').textContent = online ? 'Running locally' : 'Disconnected';
   $('#topbar-status').textContent = online ? 'Ready' : 'Backend unavailable';
+  
+  // If backend comes back online, refresh critical data
+  if (online && !state.onlineWasOnline) {
+    state.onlineWasOnline = true;
+    // Don't auto-refresh immediately to avoid spamming, but mark that we should try
+    if (state.pendingRefresh) {
+      state.pendingRefresh = false;
+      // Refresh versions and accounts after reconnection
+      loadVersions().catch(() => {});
+      loadAccounts().catch(() => {});
+      loadStatus().catch(() => {});
+    }
+  } else if (!online) {
+    state.onlineWasOnline = false;
+    state.pendingRefresh = true;
+  }
 }
 
 function showModal(title, versionId) {
@@ -1155,24 +1487,129 @@ function updateModal(status, text, complete = false, error = false) {
   }
 }
 
+function isNoSpaceError(error) {
+  const message = (error?.message || String(error || '')).toLowerCase();
+  return error?.code === 'ENOSPC' || message.includes('enospc') || message.includes('no space left') || message.includes('not enough space') || message.includes('out of space') || message.includes('disk full');
+}
+
+async function showCleanupModal() {
+  const modal = $('#cleanup-modal');
+  const list = $('#cleanup-list');
+  if (!modal || !list) return;
+  modal.style.display = 'flex';
+  list.innerHTML = '<span class="muted">Scanning installed versions by size…</span>';
+  try {
+    const { versions } = await api('/api/storage/big-versions');
+    if (!versions?.length) {
+      list.innerHTML = '<span class="muted">No installed versions were found to remove.</span>';
+      return;
+    }
+    list.innerHTML = '';
+    for (const version of versions) {
+      const row = document.createElement('div');
+      row.className = 'cleanup-item';
+      row.innerHTML = `<strong>${escapeHtml(version.id)}</strong><span class="cleanup-size">${formatBytes(version.size)}</span><button class="button button-quiet">Delete</button>`;
+      row.querySelector('button').addEventListener('click', async () => {
+        if (!confirm(`Delete version ${version.id} and free ${formatBytes(version.size)}?`)) return;
+        await api(`/api/versions/${encodeURIComponent(version.id)}/uninstall`, { method: 'POST' });
+        notify(`Deleted ${version.id}.`);
+        showCleanupModal();
+        loadInstalledVersions().then(renderVersionSelect).catch(() => {});
+      });
+      list.append(row);
+    }
+  } catch (error) {
+    list.innerHTML = `<span style="color:var(--red)">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function hideCleanupModal() { const el = $('#cleanup-modal'); if (el) el.style.display = 'none'; }
+
+async function addJarToSelectedPack() {
+  const mpId = state.selectedModpackId;
+  if (!mpId) { notify('Select a modpack first.', 'error'); return; }
+  const input = prompt('Paste a full path to a local .jar, or an HTTPS .jar URL to add to this modpack:');
+  if (!input) return;
+  try {
+    const body = input.trim().startsWith('https://') ? { fileUrl: input.trim() } : { filePath: input.trim() };
+    const { mod } = await api(`/api/modpacks/${encodeURIComponent(mpId)}/mods/local`, { method: 'POST', body });
+    await loadModpackMods(mpId);
+    notify(`Added ${mod.fileName}.`);
+  } catch (error) { reportError(error); }
+}
+
+async function importThirdPartyModpack() {
+  const input = prompt('Paste a Modrinth .mrpack HTTPS URL or a full local path to a .mrpack file:');
+  if (!input) return;
+  try {
+    const key = input.trim().startsWith('https://') ? 'sourceUrl' : 'filePath';
+    const { modpack } = await api('/api/modpacks/import', { method: 'POST', body: { [key]: input.trim() } });
+    await loadModpacks();
+    selectModpack(modpack.id);
+    navigateTo('modpacks');
+    notify(`Imported ${modpack.name}.`);
+  } catch (error) { reportError(error); }
+}
+
 function reportError(error) {
-  const message = error?.message || String(error);
+  if (isNoSpaceError(error)) showCleanupModal();
+  let message = error?.message || String(error);
+  let type = 'error';
+  
+  // Enhance error messages for common cases
+  if (error?.type === 'NETWORK_ERROR' || message.includes('Failed to fetch') || message.includes('Network error')) {
+    message = 'Network error: Unable to connect to the server. Please check if the backend is running and your internet connection is active.';
+  } else if (error?.type === 'TIMEOUT_ERROR' || message.includes('timeout') || message.includes('timed out')) {
+    message = 'Request timed out. Please check your internet connection and try again.';
+  } else if (error?.status === 404) {
+    message = 'Resource not found: ' + message;
+  } else if (error?.status === 401) {
+    message = 'Authentication required: ' + message;
+  } else if (error?.status === 429) {
+    message = 'Rate limited: Too many requests. Please wait and try again.';
+  } else if (error?.status >= 500) {
+    message = 'Server error: ' + message + ' (The server may be temporarily unavailable)';
+  } else if (message.includes('ECONNREFUSED') || message.includes('Connection refused')) {
+    message = 'Connection refused: The backend server is not running or not accessible.';
+  } else if (message.includes('ECONNRESET') || message.includes('Connection reset')) {
+    message = 'Connection reset: Network instability detected. Please try again.';
+  } else if (message.includes('ENOTFOUND') || message.includes('DNS')) {
+    message = 'DNS resolution failed: Unable to resolve the server address. Check your internet connection.';
+  } else if (message.includes('SSL') || message.includes('TLS') || message.includes('certificate')) {
+    message = 'SSL/TLS error: Security certificate issue. This might be a temporary network problem.';
+  }
+  
   setBusy(false, 'Error');
   log(message, 'error');
-  notify(message, 'error');
+  notify(message, type);
 }
 
 // Live backend events
 function connectEvents() {
-  const source = new EventSource('/api/events');
-  source.onmessage = async (message) => {
-    let event;
-    try { event = JSON.parse(message.data); } catch { return; }
-    switch (event.type) {
-      case 'hello':
-        log(`${event.app} event stream connected.`);
-        setOnline(true);
-        break;
+  let source = null;
+  let reconnectTimer = null;
+  
+  function setupEventSource() {
+    if (source) {
+      source.close();
+    }
+    
+    try {
+      source = new EventSource('/api/events');
+      
+      source.onopen = () => {
+        state.retryCount = 0;
+        log('Event stream connected.');
+      };
+      
+      source.onmessage = async (message) => {
+        let event;
+        try { event = JSON.parse(message.data); } catch { return; }
+        switch (event.type) {
+          case 'hello':
+            log(`${event.app} event stream connected.`);
+            setOnline(true);
+            break;
       case 'task-start':
       case 'queue-start':
         setBusy(true, event.name);
@@ -1203,6 +1640,7 @@ function connectEvents() {
         setBusy(false, 'Error');
         updateModal('!', event.message, false, true);
         notify(event.message, 'error');
+        if (isNoSpaceError({ message: event.message })) showCleanupModal();
         log(`Error in ${event.name}: ${event.message}`, 'error');
         break;
       case 'queue-progress':
@@ -1253,7 +1691,36 @@ function connectEvents() {
       default: break;
     }
   };
-  source.onerror = () => setOnline(false);
+  
+      source.onerror = () => {
+        setOnline(false);
+        // Try to reconnect
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts++;
+          const delay = RECONNECT_DELAY_MS * reconnectAttempts;
+          log(`Event stream disconnected. Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'error');
+          reconnectTimer = setTimeout(setupEventSource, delay);
+        } else {
+          log('Event stream reconnection attempts exhausted.', 'error');
+        }
+      };
+    } catch (error) {
+      setOnline(false);
+      log(`Failed to create EventSource: ${error.message}`, 'error');
+      // Try to reconnect
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        const delay = RECONNECT_DELAY_MS * reconnectAttempts;
+        reconnectTimer = setTimeout(setupEventSource, delay);
+      }
+    }
+  }
+  
+  // Start the connection
+  const MAX_RECONNECT_ATTEMPTS = 10;
+  const RECONNECT_DELAY_MS = 3000;
+  let reconnectAttempts = 0;
+  setupEventSource();
 }
 
 function selectedPayload() {
@@ -1435,9 +1902,14 @@ function bindUi() {
   });
   $('#modal-close')?.addEventListener('click', hideModal);
   $('#download-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideModal(); });
+  $('#cleanup-modal-close')?.addEventListener('click', hideCleanupModal);
+  $('#cleanup-cancel')?.addEventListener('click', hideCleanupModal);
+  $('#cleanup-refresh')?.addEventListener('click', () => showCleanupModal());
+  $('#cleanup-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideCleanupModal(); });
 
   // Modpacks
   $('#modpacks-refresh')?.addEventListener('click', () => loadModpacks());
+  $('#modpacks-import')?.addEventListener('click', () => importThirdPartyModpack());
   $('#modpacks-new')?.addEventListener('click', () => showModpackModal());
   $('#modpack-empty-new')?.addEventListener('click', () => showModpackModal());
   $('#modpack-modal-close')?.addEventListener('click', () => hideModpackModal());
@@ -1471,6 +1943,7 @@ function bindUi() {
     if (!state.selectedModpackId) return;
     try { const body = selectedPayload(); await api(`/api/modpacks/${encodeURIComponent(state.selectedModpackId)}/launch`, { method:'POST', body }); } catch (e) { reportError(e); }
   });
+  $('#mp-add-jar')?.addEventListener('click', () => addJarToSelectedPack());
   $('#mp-delete')?.addEventListener('click', async () => {
     if (!state.selectedModpackId) return;
     if (!confirm('Delete this modpack? This will remove all files.')) return;
@@ -1482,13 +1955,15 @@ function bindUi() {
       $$('#mp-tabs .filter-tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active');
       const name = tab.dataset.tab;
       $('#mp-tab-mods').style.display = name==='mods'?'block':'none';
-      $('#mp-tab-browse').style.display = name==='browse'?'block':'none';
+      $('#mp-tab-resourcepacks').style.display = name==='resourcepacks'?'block':'none';
+      $('#mp-tab-shaders').style.display = name==='shaders'?'block':'none';
       $('#mp-tab-settings').style.display = name==='settings'?'block':'none';
     });
   });
 
-  $('#mp-search-btn')?.addEventListener('click', () => doModSearch());
-  $('#mp-search')?.addEventListener('keydown', (e) => { if (e.key==='Enter') doModSearch(); });
+  $('#mp-project-type')?.addEventListener('change', () => doModSearch({ resetPage: true }));
+  $('#mp-search-btn')?.addEventListener('click', () => doModSearch({ resetPage: true }));
+  $('#mp-search')?.addEventListener('keydown', (e) => { if (e.key==='Enter') doModSearch({ resetPage: true }); });
 
   document.addEventListener('keydown', (event) => {
     if (event.key >= '1' && event.key <= '5' && !/input|select|textarea/i.test(document.activeElement?.tagName || '')) {
@@ -1500,6 +1975,7 @@ function bindUi() {
       hideModpackModal();
       hideSkinManager();
       hideDriveModal();
+      hideCleanupModal();
       if ($('#microsoft-modal')?.style.display !== 'none') closeMicrosoftModal(true);
     }
   });
