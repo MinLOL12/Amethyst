@@ -60,6 +60,22 @@ async function main() {
   assert.equal(saved.fullscreen, true);
   assert.equal(saved.jvmArgs, '-XX:+UseG1GC');
 
+  // Theme collection: a player can retain multiple sanitized themes and select
+  // one to apply on the next launch. Invalid colour input falls back safely.
+  const themed = await saveSettings({
+    themes: [
+      { id: 'amethyst', name: 'Amethyst', background: '#0b0912', panel: '#171223', accent: '#a879ff', accentBright: '#c6a8ff', text: '#f7f4ff' },
+      { id: 'sunset', name: 'Sunset', background: '#20121f', panel: '#35203a', accent: '#ed7bba', accentBright: '#ffc3e5', text: '#fff4fb' },
+      { id: 'broken', name: 'Broken colour', background: 'not-a-colour' }
+    ],
+    activeThemeId: 'sunset'
+  });
+  assert.equal(themed.themes.length, 3);
+  assert.equal(themed.activeThemeId, 'sunset');
+  assert.equal(themed.theme.name, 'Sunset');
+  assert.equal(themed.themes.find((theme) => theme.id === 'broken').background, '#0b0912');
+  assert.equal((await readSettings()).theme.id, 'sunset');
+
   // Instances: create, rename, duplicate, delete, export/import.
   const inst = await createInstance({
     name: 'Test Fabric Pack',

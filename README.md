@@ -67,8 +67,8 @@ keeping the implementation simple:
 - Java detection and managed Java downloads.
 - Live download queue, speed, ETA, install, launch, and log feedback.
 - Live Minecraft CPU/RAM monitoring and an in-launch game console.
-- Custom color themes saved locally from Settings.
-- Configurable Discord Rich Presence templates using `{version}`, `{loader}`, and `{player}`.
+- A locally saved custom-theme library: create, preview, switch, and delete color themes from Settings.
+- Configurable Discord Rich Presence templates using `{version}`, `{loader}`, and `{player}`, with an in-app presence preview.
 - Keyboard navigation (`1`–`5`) and mobile navigation.
 
 To change the look, edit `public/index.html` and `public/styles.css`. To change
