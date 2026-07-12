@@ -36,8 +36,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install pkg
-        run: npm install -g pkg
+      - name: Install fork of pkg
+        run: npm install -g @yao-pkg/pkg
 
       - name: Build EXE
         run: |
