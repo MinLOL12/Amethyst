@@ -20,53 +20,82 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
-
-    env:
-      ELECTRON_BUILDER_PUBLISH: never
-
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_step.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.12.0
-          cache: npm
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Windows app
-        run: npm run build:win
-
       - name: Create version
-        id: version
+        id: version_step
         shell: bash
         run: |
           VERSION="v1.0.${GITHUB_RUN_NUMBER}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Create Git tag
         shell: bash
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag ${{ steps.version.outputs.version }}
-          git push origin ${{ steps.version.outputs.version }}
+          git tag ${{ steps.version_step.outputs.version }}
+          git push origin ${{ steps.version_step.outputs.version }}
 
+  build:
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            build_script: build:win
+          - os: ubuntu-latest
+            build_script: build:linux
+          - os: macos-latest
+            build_script: build:mac
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_BUILDER_PUBLISH: never
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Build app
+        run: npm run ${{ matrix.build_script }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.os }}
+          path: dist/**/*
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: Amethyst ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.version.outputs.version }}
+          name: Amethyst ${{ needs.version.outputs.version }}
           files: |
-            dist/Amethyst-Launcher-Setup-*.exe
-            dist/Amethyst-Launcher-*-portable-*.exe
+            dist/**/*.exe
+            dist/**/*.dmg
+            dist/**/*.AppImage
+            dist/**/*.deb
             exewarning.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
