@@ -477,6 +477,22 @@ function interpolatePresence(template, context) {
   return String(template || '').replace(/\{(version|loader|player)\}/g, (_, key) => context[key] || '—');
 }
 
+function isValidDiscordApplicationId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  // Plain Application ID snowflake.
+  if (/^\d{1,32}$/.test(raw)) return true;
+  // Bot token style: base64(id).timestamp.hmac — letters are valid.
+  const parts = raw.split('.');
+  if (parts.length !== 3 || !parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part))) return false;
+  try {
+    const decoded = atob(parts[0].replace(/-/g, '+').replace(/_/g, '/'));
+    return /^\d{17,22}$/.test(decoded.trim());
+  } catch (_) {
+    return false;
+  }
+}
+
 function syncDiscordRequirement() {
   const enabled = Boolean($('#settings-discord-enabled')?.checked);
   const input = $('#settings-discord-client-id');
@@ -485,7 +501,9 @@ function syncDiscordRequirement() {
   const applicationId = input.value.trim();
   let message = '';
   if (enabled && !applicationId) message = 'Enter a Discord Application ID to enable Discord RPC.';
-  else if (enabled && !/^\d+$/.test(applicationId)) message = 'The Discord Application ID must contain only numbers.';
+  else if (enabled && !isValidDiscordApplicationId(applicationId)) {
+    message = 'Enter a valid Discord Application ID or bot token (for example base64Id.timestamp.hmac).';
+  }
 
   input.required = enabled;
   input.setAttribute('aria-required', String(enabled));

@@ -60,15 +60,15 @@ async function main() {
   assert.equal(saved.fullscreen, true);
   assert.equal(saved.jvmArgs, '-XX:+UseG1GC');
 
-  // Discord RPC remains optional, but enabling it requires a numeric
-  // user-provided Discord Application ID.
+  // Discord RPC remains optional, but enabling it requires a valid
+  // Application ID (snowflake) or a bot-token paste that encodes one.
   await assert.rejects(
     saveSettings({ discordEnabled: true, discordClientId: '' }),
     /Discord Application ID is required/u
   );
   await assert.rejects(
     saveSettings({ discordEnabled: true, discordClientId: 'not-an-id' }),
-    /must contain only numbers/u
+    /valid Discord Application ID or bot token/u
   );
   const discordSettings = await saveSettings({
     discordEnabled: true,
@@ -76,6 +76,15 @@ async function main() {
   });
   assert.equal(discordSettings.discordEnabled, true);
   assert.equal(discordSettings.discordClientId, '123456789012345678');
+
+  // Bot tokens contain letters and must be accepted; the snowflake is stored.
+  const tokenSettings = await saveSettings({
+    discordEnabled: true,
+    discordClientId: 'MTQ1OTc2MDg4NzI2NjAxNzQ4NA.GZthgJ.CP-KZ2hoNEnXBqcps_3wWs8bN5qKmpOAsCQh9g'
+  });
+  assert.equal(tokenSettings.discordEnabled, true);
+  assert.equal(tokenSettings.discordClientId, '1459760887266017484');
+
   await assert.rejects(
     saveSettings({ discordClientId: '' }),
     /Discord Application ID is required/u
