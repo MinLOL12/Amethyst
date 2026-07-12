@@ -1538,6 +1538,136 @@ function stopRuntimeUi(message) {
   $('#runtime-title').textContent = message;
   $('#runtime-state').className = 'runtime-state stopped';
   $('#runtime-state').innerHTML = '<i></i><span>Stopped</span>';
+  // If the game crashed, show a "View crash report" button on the runtime card
+  if (message.toLowerCase().includes('crash') || message.toLowerCase().includes('unexpected')) {
+    const existingBtn = $('#runtime-view-crash');
+    if (!existingBtn) {
+      const metricsEl = document.querySelector('.runtime-metrics');
+      if (metricsEl) {
+        const btn = document.createElement('button');
+        btn.id = 'runtime-view-crash';
+        btn.className = 'button button-subtle';
+        btn.style.cssText = 'margin-top:14px; width:100%';
+        btn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM8 5v3.5M8 10.5h.007"/></svg><span>View crash report</span>';
+        btn.addEventListener('click', () => {
+          if (lastCrashAnalysis) showCrashReport(lastCrashAnalysis);
+        });
+        metricsEl.after(btn);
+      }
+    }
+  } else {
+    // Remove the crash button on normal exit
+    $('#runtime-view-crash')?.remove();
+  }
+}
+
+// ── Crash report modal ────────────────────────────────────────────
+let lastCrashAnalysis = null;
+
+function showCrashReport(analysis) {
+  lastCrashAnalysis = analysis;
+
+  const modal = $('#crash-modal');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+
+  // Title and version
+  $('#crash-modal-title').textContent = 'Minecraft Crashed';
+  $('#crash-modal-version').textContent = analysis.versionId
+    ? `Minecraft ${analysis.versionId} — exit code ${analysis.exitCode ?? 'unknown'}${analysis.signal ? ` (${analysis.signal})` : ''}`
+    : `Exit code ${analysis.exitCode ?? 'unknown'}${analysis.signal ? ` (${analysis.signal})` : ''}`;
+
+  // Severity badge
+  const badge = $('#crash-severity-badge');
+  const severity = analysis.severity || 'unknown';
+  badge.textContent = severity.toUpperCase();
+  badge.className = `crash-severity-badge ${severity}`;
+
+  // Summary text
+  $('#crash-summary-text').textContent = analysis.summary || 'The game stopped unexpectedly. Check the crash log below for details.';
+
+  // Detected patterns
+  const patternsEl = $('#crash-patterns');
+  const patternList = $('#crash-pattern-list');
+  patternList.innerHTML = '';
+
+  if (analysis.matchedPatterns && analysis.matchedPatterns.length) {
+    patternsEl.style.display = 'block';
+    for (const pattern of analysis.matchedPatterns) {
+      const item = document.createElement('div');
+      item.className = 'crash-pattern-item';
+      item.innerHTML = `
+        <span class="crash-pattern-title">${escapeHtml(pattern.title)}</span>
+        <span class="crash-pattern-description">${escapeHtml(pattern.description)}</span>
+      `;
+      patternList.append(item);
+    }
+  } else {
+    patternsEl.style.display = 'none';
+  }
+
+  // Fix suggestions
+  const fixList = $('#crash-fix-list');
+  fixList.innerHTML = '';
+  const fixes = analysis.fixSuggestions || [];
+  for (const fix of fixes) {
+    const li = document.createElement('li');
+    if (typeof fix === 'object' && fix.url) {
+      li.innerHTML = `<a href="${escapeHtml(fix.url)}" target="_blank" rel="noreferrer">${escapeHtml(fix.text)}</a>`;
+    } else {
+      li.textContent = String(fix);
+    }
+    fixList.append(li);
+  }
+
+  // GitHub link
+  const githubLink = $('#crash-github-link');
+  if (analysis.githubIssueUrl) {
+    githubLink.href = analysis.githubIssueUrl;
+  } else {
+    githubLink.href = 'https://github.com/MinLOL12/Amethyst/issues/new';
+  }
+
+  // Exception / crash log
+  const exceptionEl = $('#crash-exception');
+  if (analysis.exceptionSection) {
+    exceptionEl.textContent = analysis.exceptionSection;
+  } else if (analysis.rawCrashText) {
+    exceptionEl.textContent = analysis.rawCrashText.slice(0, 20000);
+  } else if (analysis.stackSummary) {
+    exceptionEl.textContent = analysis.stackSummary;
+  } else {
+    exceptionEl.textContent = 'No detailed crash log available. The game exited without generating a crash report file. Check the launcher console for Java output.';
+  }
+}
+
+function hideCrashReport() {
+  const modal = $('#crash-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function copyCrashLog() {
+  if (!lastCrashAnalysis) return;
+  const text = lastCrashAnalysis.rawCrashText
+    || lastCrashAnalysis.exceptionSection
+    || lastCrashAnalysis.stackSummary
+    || `Minecraft crashed (exit code ${lastCrashAnalysis.exitCode ?? 'unknown'})\n\n${lastCrashAnalysis.summary || ''}`;
+
+  navigator.clipboard?.writeText(text).then(() => {
+    notify('Crash log copied to clipboard.');
+  }).catch(() => {
+    // Fallback: select the exception text
+    const el = $('#crash-exception');
+    if (el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      notify('Crash log selected — press Ctrl+C to copy.');
+    }
+  });
 }
 
 async function loadRuntime() {
@@ -1830,7 +1960,56 @@ function connectEvents() {
         setBusy(false, failed ? 'Launch failed' : 'Ready');
         log(message, failed ? 'error' : 'info');
         appendGameConsole(`\n[Amethyst] ${message}\n`, failed ? 'stderr' : 'stdout');
-        if (failed) notify(`${message} See the launcher log for the Java error.`, 'error');
+        if (failed) {
+          notify(`${message} Analyzing crash…`, 'error');
+          // If the game-crash event doesn't arrive within 5 seconds (e.g. no crash report file),
+          // show the fallback crash modal using just the exit code info.
+          let crashReceived = false;
+          const originalHandler = source.onmessage;
+          const quickCheck = (msg) => {
+            try {
+              const evt = JSON.parse(msg.data);
+              if (evt.type === 'game-crash') crashReceived = true;
+            } catch (_) {}
+          };
+          source.addEventListener('message', (e) => quickCheck(e));
+          setTimeout(() => {
+            if (!crashReceived && failed) {
+              // Fallback: show crash report with exit-only analysis
+              showCrashReport({
+                crashed: true,
+                exitCode: event.code,
+                signal: event.signal || null,
+                versionId: event.versionId || event.baseVersionId || '',
+                gameDir: event.gameDir || '',
+                severity: 'error',
+                matchedPatterns: [],
+                summary: event.signal
+                  ? `Minecraft was terminated by signal ${event.signal}. This usually means the process was killed externally or crashed due to a system-level error.`
+                  : `Minecraft exited with error code ${event.code ?? 'unknown'}. A crash report may have been generated — check the details section below.`,
+                exceptionSection: '',
+                rawCrashText: '',
+                githubIssueUrl: `https://github.com/MinLOL12/Amethyst/issues/new?title=${encodeURIComponent(`[Crash] Unexpected exit (code ${event.code ?? 'unknown'}) — Minecraft ${event.versionId || ''}`)}`,
+                fixSuggestions: [
+                  'Check the game console output above for Java error messages.',
+                  'Try allocating more RAM in the launcher settings.',
+                  'Make sure you are using the correct Java version for your Minecraft version.',
+                  'If you have mods installed, try removing them and launching vanilla first.',
+                  { text: 'Open a GitHub issue for help', url: 'https://github.com/MinLOL12/Amethyst/issues/new' }
+                ]
+              });
+            }
+          }, 5000);
+        }
+        break;
+      }
+      case 'game-crash': {
+        stopRuntimeUi('Minecraft crashed');
+        setBusy(false, 'Crash detected');
+        const crashMessage = event.summary || 'Minecraft crashed unexpectedly.';
+        log(crashMessage, 'error');
+        appendGameConsole(`\n[Amethyst] ${crashMessage}\n`, 'stderr');
+        showCrashReport(event);
         break;
       }
       default: break;
@@ -2056,6 +2235,12 @@ function bindUi() {
   $('#cleanup-refresh')?.addEventListener('click', () => showCleanupModal());
   $('#cleanup-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideCleanupModal(); });
 
+  // Crash report modal
+  $('#crash-modal-close')?.addEventListener('click', hideCrashReport);
+  $('#crash-close-btn')?.addEventListener('click', hideCrashReport);
+  $('#crash-copy-log')?.addEventListener('click', copyCrashLog);
+  $('#crash-modal')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) hideCrashReport(); });
+
   // Modpacks
   $('#modpacks-refresh')?.addEventListener('click', () => loadModpacks());
   $('#modpacks-import')?.addEventListener('click', () => importThirdPartyModpack());
@@ -2125,6 +2310,7 @@ function bindUi() {
       hideSkinManager();
       hideDriveModal();
       hideCleanupModal();
+      hideCrashReport();
       if ($('#microsoft-modal')?.style.display !== 'none') closeMicrosoftModal(true);
     }
   });

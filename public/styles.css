@@ -317,6 +317,40 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 9px; backgro
 /* Scrollbars */
 ::-webkit-scrollbar { width: 7px; height: 7px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 10px; background: rgba(255,255,255,.13); background-clip: padding-box; } ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.24); background-clip: padding-box; }
 
+/* Crash report modal */
+.crash-report-modal { max-height: calc(100vh - 40px); overflow-y: auto; }
+.crash-modal-icon { background: rgba(255,127,159,.12) !important; border-color: rgba(255,127,159,.3) !important; color: var(--red) !important; }
+.crash-modal-body { display: flex; flex-direction: column; gap: 18px; margin-top: 20px; padding: 0 4px; }
+.crash-summary-section { display: flex; align-items: flex-start; gap: 12px; }
+.crash-severity-badge { display: inline-block; flex: 0 0 auto; padding: 5px 10px; border-radius: 6px; font-size: .58rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
+.crash-severity-badge.critical { color: var(--red); border: 1px solid rgba(255,127,159,.3); background: rgba(255,127,159,.1); }
+.crash-severity-badge.error { color: var(--amber); border: 1px solid rgba(244,196,109,.3); background: rgba(244,196,109,.1); }
+.crash-severity-badge.warning { color: var(--violet-bright); border: 1px solid rgba(168,121,255,.3); background: rgba(168,121,255,.1); }
+.crash-severity-badge.unknown { color: var(--ink-muted); border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+.crash-summary-text { color: var(--ink-soft); font-size: .82rem; line-height: 1.55; }
+.crash-patterns { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,127,159,.04); }
+.crash-pattern-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.crash-pattern-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.03); }
+.crash-pattern-title { font-size: .78rem; font-weight: 700; color: var(--ink); }
+.crash-pattern-description { font-size: .7rem; color: var(--ink-soft); line-height: 1.5; }
+.crash-fixes { padding: 14px 0 0; }
+.crash-fix-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-left: 20px; }
+.crash-fix-list li { color: var(--ink-soft); font-size: .76rem; line-height: 1.55; }
+.crash-fix-list li::marker { color: var(--violet-bright); }
+.crash-fix-list a { color: var(--violet-bright); text-decoration: none; font-weight: 600; }
+.crash-fix-list a:hover { text-decoration: underline; }
+.crash-support-banner { display: flex; flex-direction: column; gap: 12px; }
+.crash-details-toggle { border: 1px solid var(--line); border-radius: 11px; background: rgba(8,6,14,.42); }
+.crash-details-toggle summary { padding: 12px 16px; color: var(--ink-muted); font-size: .7rem; font-weight: 700; cursor: pointer; letter-spacing: .08em; transition: color .2s ease; }
+.crash-details-toggle summary:hover { color: var(--ink-soft); }
+.crash-exception { max-height: 350px; overflow: auto; margin: 0; padding: 14px; color: #c8bfdc; font: .65rem/1.55 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--line); background: #08060e; border-radius: 0 0 11px 11px; }
+
+@media (max-width: 520px) {
+  .crash-report-modal { padding: 20px; }
+  .crash-summary-section { flex-direction: column; gap: 6px; }
+  .crash-support-banner .info-banner { flex-direction: column; }
+}
+
 /* Split-screen Modrinth modpack browser */
 .modpack-picker-panel { padding: 0; margin-bottom: 18px; overflow: hidden; }
 .modpack-rail { display: flex; gap: 10px; min-height: 92px; padding: 14px; overflow-x: auto; }

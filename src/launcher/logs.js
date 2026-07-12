@@ -3,6 +3,7 @@ const path = require('node:path');
 const { getDataRoot } = require('../config');
 const { ensureDir, readJson, writeJson } = require('./store');
 const { progressBus } = require('./downloader');
+const { analyzeCrash, analyzeExitOnly, findLatestCrashReport, readLatestCrashReport } = require('./crashAnalyzer');
 
 const MAX_LINES = 5000;
 const logBuffer = [];
@@ -122,11 +123,44 @@ progressBus.on('event', (event) => {
   } else if (event.type === 'launch-start') {
     appendLog({ stream: 'info', message: `Launching ${event.versionId} with ${event.java}`, source: 'launcher' });
   } else if (event.type === 'launch-exit') {
+    const failed = event.code !== 0 && event.code !== null || Boolean(event.signal);
     appendLog({
-      stream: event.code && event.code !== 0 ? 'error' : 'info',
+      stream: failed ? 'error' : 'info',
       message: `Minecraft exited code=${event.code ?? 'n/a'} signal=${event.signal ?? 'none'}`,
       source: 'launcher'
     });
+
+    // Auto-analyze unexpected exits and emit a game-crash event
+    if (failed) {
+      (async () => {
+        try {
+          const gameDir = event.gameDir || path.join(getDataRoot(), 'minecraft');
+          const versionId = event.versionId || event.baseVersionId || '';
+
+          // Try to find and read the latest crash report
+          const crashReportPath = await findLatestCrashReport(gameDir);
+          const crashText = crashReportPath ? await readLatestCrashReport(crashReportPath) : '';
+
+          const analysis = crashText
+            ? analyzeCrash({ crashText, exitCode: event.code, signal: event.signal, gameDir, versionId })
+            : analyzeExitOnly({ exitCode: event.code, signal: event.signal, versionId, gameDir });
+
+          // Attach the raw crash report path and content for the frontend
+          analysis.crashReportPath = crashReportPath || '';
+          analysis.rawCrashText = crashText ? crashText.slice(0, 30000) : '';
+
+          progressBus.emitEvent('game-crash', analysis);
+        } catch (analysisError) {
+          // Never let analysis failures interfere with the normal event flow
+          progressBus.emitEvent('game-crash', analyzeExitOnly({
+            exitCode: event.code,
+            signal: event.signal,
+            versionId: event.versionId || '',
+            gameDir: event.gameDir || ''
+          }));
+        }
+      })();
+    }
   } else if (event.type === 'launch-error') {
     appendLog({ stream: 'error', message: event.message, source: 'launcher' });
   } else if (event.type === 'task-error') {
