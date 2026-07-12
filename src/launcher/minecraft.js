@@ -20,6 +20,7 @@ const {
 } = require('./modLoaders');
 const { getInstance, touchPlayed, updateInstance } = require('./instances');
 const { appendLog } = require('./logs');
+const { startRuntimeMonitor } = require('./runtime');
 
 function currentRuleEnv() {
   return { name: minecraftOsName(), arch: process.arch === 'ia32' ? 'x86' : process.arch };
@@ -842,6 +843,10 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     child.once('error', (error) => fail(new Error(`Could not start Minecraft: ${error.message}`)));
     child.once('spawn', () => {
       progressBus.emitEvent('launch-start', launchEvent);
+      startRuntimeMonitor(child, {
+        ...launchEvent,
+        username: authAccount.username
+      });
       timer = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -867,6 +872,12 @@ async function launchVersion(versionId, accountOrId, options = {}) {
     progressBus.emitEvent('launch-error', { versionId: install.versionId, message: error.message });
     throw error;
   }
+
+  progressBus.emitEvent('launch-ready', {
+    ...launchEvent,
+    pid: child.pid,
+    username: authAccount.username
+  });
 
   return {
     pid: child.pid,

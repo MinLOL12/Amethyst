@@ -45,6 +45,7 @@ AMETHYST_HOME=/path/to/data npm start   # store data somewhere else
 AMETHYST_NO_OPEN=1 npm start            # do not open a browser automatically
 PORT=8080 npm start                     # use a fixed local port
 AMETHYST_MS_CLIENT_ID=your-entra-public-client-id npm start  # optional OAuth client
+AMETHYST_DISCORD_CLIENT_ID=your-discord-application-id npm start  # optional Rich Presence app
 # Optional with a custom sovereign-cloud/authority registration:
 AMETHYST_MS_DEVICE_CODE_URL=https://authority/devicecode AMETHYST_MS_TOKEN_URL=https://authority/token npm start
 ```
@@ -65,7 +66,10 @@ keeping the implementation simple:
 - Offline and Microsoft account profiles.
 - Java detection and managed Java downloads.
 - Live download queue, speed, ETA, install, launch, and log feedback.
-- Keyboard navigation (`1`–`4`) and mobile navigation.
+- Live Minecraft CPU/RAM monitoring and an in-launch game console.
+- Custom color themes saved locally from Settings.
+- Configurable Discord Rich Presence templates using `{version}`, `{loader}`, and `{player}`.
+- Keyboard navigation (`1`–`5`) and mobile navigation.
 
 To change the look, edit `public/index.html` and `public/styles.css`. To change
 behavior, edit `public/app.js`; the Node server automatically serves those
