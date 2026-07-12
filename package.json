@@ -98,5 +98,21 @@
     "portable": {
       "artifactName": "Amethyst-Launcher-${version}-portable.${ext}"
     }
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "src/**/*",
+      "build/**/*",
+      "tauri-ui/**/*",
+      "test/**/*",
+      "*.json",
+      "*.txt",
+      "LICENSE",
+      "README.md"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
   }
 }
