@@ -36,8 +36,8 @@ Portable (no-install) versions are also available for both architectures.
 
 Download the correct package from [GitHub Releases](https://github.com/MinLOL12/Amethyst/releases):
 
-- **AppImage**: Download the  file, make it executable (), and run it.
-- **Debian (.deb)**: Download the  file and install it using your package manager (e.g., Reading package lists...).
+- **AppImage**: Download the  file, make it executable, and run it.
+- **Debian (.deb)**: Download the  file and install it using your package manager.
 
 ## Install on macOS
 
