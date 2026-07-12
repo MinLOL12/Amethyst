@@ -20,22 +20,7 @@ installer or a portable `.exe` without installing Node.js.
 
 ## Install on Windows
 
-Download either Windows artifact from the latest GitHub release or workflow
-run:
-
-- **`Amethyst-Launcher-Setup-…-x64.exe`** — installer with Start Menu and
-  optional desktop shortcuts.
-- **`Amethyst-Launcher-…-portable.exe`** — standalone executable; no install
-  required.
-
-Java is not bundled because Minecraft versions require different runtimes.
-Amethyst detects installed Java versions and can download managed runtimes from
-Adoptium. Internet access is required for first-time game downloads, metadata,
-news, and optional Microsoft login.
-
-Application data remains in `~/.amethyst`, so upgrading or uninstalling the
-desktop app does not remove instances or accounts.
-
+Download Amethyst.exe from releases.
 ## Run from source
 
 Contributors need Node.js 22.12 or newer:
