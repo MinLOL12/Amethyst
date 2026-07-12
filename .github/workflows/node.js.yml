@@ -12,6 +12,7 @@ on:
       - "tauri-ui/**"
       - "test/**"
       - "exewarning.txt"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
