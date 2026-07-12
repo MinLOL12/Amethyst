@@ -112,10 +112,12 @@ Forge and NeoForge modpacks use isolated game directories. Before the official i
 - Download the correct Temurin JDK automatically through Adoptium.
 - Choose Java per installation.
 
-### Downloads, settings, and logs
+### Downloads, settings, logs, and resource usage
 
 - Queue downloads with progress, speed, and estimated time remaining.
 - Configure RAM, resolution, fullscreen, JVM arguments, and launch arguments.
+- View live CPU/RAM usage while Minecraft is running.
+- Show a loading state while the game starts, then reveal live game logs once it is running.
 - View live game logs, search logs, copy output, and inspect crash reports.
 - Open instance folders, saves, mods, screenshots, resource packs, logs, and
   crash reports from the launcher.
