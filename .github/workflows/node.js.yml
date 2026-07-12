@@ -23,6 +23,9 @@ jobs:
   build:
     runs-on: windows-latest
 
+    env:
+      ELECTRON_BUILDER_PUBLISH: never
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,7 +39,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Windows app
         run: npm run build:win
@@ -62,7 +65,8 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Amethyst ${{ steps.version.outputs.version }}
           files: |
-            dist/**
+            dist/Amethyst-Launcher-Setup-*-x64.exe
+            dist/Amethyst-Launcher-*-portable.exe
             exewarning.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
