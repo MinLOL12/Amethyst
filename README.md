@@ -26,10 +26,9 @@ installer or a portable `.exe` without installing Node.js.
 
 Download the correct installer for your system from [GitHub Releases](https://github.com/MinLOL12/Amethyst/releases):
 
-- **x64** (most Intel/AMD PCs): `Amethyst-Launcher-Setup-*-x64.exe`
-- **ARM64** (Snapdragon X, Surface Pro 11, etc.): `Amethyst-Launcher-Setup-*-arm64.exe`
+- **x64** (most Intel/AMD PCs): `Amethyst-Launcher-Setup-*-x64.exe``
 
-Portable (no-install) versions are also available for both architectures.
+or choose Portable (no-install)
 
 > If you see "This app can't run on your PC," make sure you downloaded the correct architecture for your device. Check your system type under **Settings → System → About → Device specifications → System type**.
 ## Run from source
