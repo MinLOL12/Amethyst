@@ -1,17 +1,21 @@
 # Amethyst <img src="https://raw.githubusercontent.com/MinLOL12/Amethyst/main/build/icon.png" width="30">
 
 [![GitHub](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/MinLOL12/Amethyst) ![Coverage](https://img.shields.io/badge/coolometer-100%25-orange)
-###### The main branch may be outdated at points.
+### Credits
 
+We would like to acknowledge and thank those who have contributed to the development of Amethyst:
+
+*   **Lumi / LumiFaye** – Main collaborator and co-owner
+*   **MinLOL12 / Minveraz** – Owner and collaborator
+*   **Yuri Morozov** - NO idea he just a cool dude tho
+
+----TUTORIAL----
 Amethyst is a dark-purple Minecraft launcher packaged as a native **Electron
 desktop application**. Its Node.js backend and zero-build HTML/CSS/JavaScript
 UI run together inside the app, so Windows users can launch Amethyst from an
 installer or a portable `.exe` without installing Node.js.
 
-> **Legal/download note:** Amethyst does not include or redistribute Minecraft
-> client code, libraries, assets, or copyrighted game files. When you install or
-> launch a version, it reads Mojang's public version manifest and downloads the
-> official files from Mojang/Microsoft-hosted URLs on the user's machine.
+> **Legal Disclaimer:** Amethyst does not include or redistribute Minecraft client code, libraries, assets, or other copyrighted game materials. Upon installation or execution, the launcher retrieves Mojang's public version manifest and downloads official files directly from Mojang/Microsoft servers to the user's local machine. Amethyst Studios does **not**provide unauthorized game copies, nor do we support or condone software piracy.
 
 > **Security note:** Amethyst binds to `127.0.0.1` (localhost) only. Do **not** port
 > forward the launcher's port to the internet. The backend has no authentication
@@ -100,11 +104,13 @@ Offline accounts cannot publish an official skin because Minecraft's profile ser
 Forge and NeoForge modpacks use isolated game directories. Before the official installer runs, Amethyst creates a compatible `launcher_profiles.json` inside the instance, so the installer does not incorrectly ask the user to run Mojang's launcher first.
 
 ### Java manager
+### Java Manager
 
-- Detect Java from `JAVA_HOME`, `PATH`, and common locations.
-- Download the correct Temurin JDK automatically through Adoptium.
-- Choose Java per installation.
+To ensure a smooth gaming experience, you must install the appropriate Java Development Kit (JDK) version required by the specific Minecraft release you intend to play. Compatibility varies significantly between game versions:
 
+*   **Version Compatibility:** Newer Minecraft releases generally require newer Java versions (e.g., Minecraft 1.20+ typically requires Java 17 or 21). Conversely, older versions of the game will only function with older Java releases (such as Java 8 or 11).
+*   **Recommended Distribution:** We recommend using [Adoptium (Eclipse Temurin)]([#####################]) as your primary source for Java, as it provides reliable and pre-built binaries for all major operating systems.
+*   **Version Mismatch:** If you don't install the correct version, the launcher will throw an error explaining that you do not have the Java version required to launch your modpack/version of the game.
 ### Downloads, settings, and logs
 
 - Queue downloads with progress, speed, and estimated time remaining.
@@ -115,10 +121,7 @@ Forge and NeoForge modpacks use isolated game directories. Before the official i
 
 ### Official Minecraft files
 
-Amethyst downloads and verifies official vanilla game files from Mojang
-metadata, including the client jar, libraries, native libraries, asset index,
-and asset objects. It does not grant a Minecraft license; users must comply
-with Minecraft's EULA and applicable terms.
+Amethyst downloads and verifies official Minecraft game files directly from Mojang's metadata, including the client JAR, libraries, native binaries, asset indexes, and asset objects. Please note that this software does not grant a Minecraft license; users are required to comply with the Minecraft End User License Agreement (EULA) and all other applicable terms of service.
 
 ## Data and file structure
 
