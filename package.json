@@ -99,7 +99,11 @@
       "artifactName": "Amethyst-Launcher-${version}-portable.${ext}"
     }
   },
-  "pkg": {
+   "pkg": {
+    "scripts": [
+      "src/**/*.js",
+      "public/**/*.js"
+    ],
     "assets": [
       "public/**/*",
       "src/**/*",
