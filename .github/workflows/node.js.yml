@@ -65,8 +65,8 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Amethyst ${{ steps.version.outputs.version }}
           files: |
-            dist/Amethyst-Launcher-Setup-*-x64.exe
-            dist/Amethyst-Launcher-*-portable.exe
+            dist/Amethyst-Launcher-Setup-*.exe
+            dist/Amethyst-Launcher-*-portable-*.exe
             exewarning.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
